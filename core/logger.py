@@ -20,22 +20,16 @@ def get_timestamp():
 
 def parse(args):
     phase = args.phase
-    opt_path = args.config
+    opt_path = args.cfg_file
     gpu_ids = args.gpu_ids
     enable_wandb = args.enable_wandb
-    # remove comments starting with '//'
-    json_str = ''
-    with open(opt_path, 'r') as f:
-        for line in f:
-            line = line.split('//')[0] + '\n'
-            json_str += line
-    opt = json.loads(json_str, object_pairs_hook=OrderedDict)
+    opt = args
 
     # set log directory
     if args.debug:
         opt['name'] = 'debug_{}'.format(opt['name'])
     experiments_root = os.path.join(
-        'experiments', '{}_{}'.format(opt['name'], get_timestamp()))
+        'Output', '{}_{}'.format(opt['name'], get_timestamp()))
     opt['path']['experiments_root'] = experiments_root
     for key, path in opt['path'].items():
         if 'resume' not in key and 'experiments' not in key:
@@ -47,8 +41,8 @@ def parse(args):
 
     # export CUDA_VISIBLE_DEVICES
     if gpu_ids is not None:
-        opt['gpu_ids'] = [int(id) for id in gpu_ids.split(',')]
-        gpu_list = gpu_ids
+        opt['gpu_ids'] = [int(id) for id in gpu_ids]
+        gpu_list = ','.join(str(id) for id in gpu_ids)
     else:
         gpu_list = ','.join(str(x) for x in opt['gpu_ids'])
     os.environ['CUDA_VISIBLE_DEVICES'] = gpu_list
