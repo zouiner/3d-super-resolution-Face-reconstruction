@@ -46,7 +46,7 @@ def transform_augment(img_list, split='val', min_max=(0, 1)):
     return ret_img
 
 class mockDataset(Dataset):
-    def __init__(self, K, image_size, l_resolution, r_resolution, scale, trans_scale = 0, isEval = False, isTest = False, need_LR = False, split = 'train'):
+    def __init__(self, K, image_size, l_resolution, r_resolution, scale, trans_scale = 0, isEval = False, isTest = False, need_LR = False, split = 'train', data_len = None):
         '''
         K must be less than 6
         '''
@@ -93,8 +93,11 @@ class mockDataset(Dataset):
         # if isEval or isTest:
         #     datafile = '/shared/storage/cs/staffstore/ps1510/Tutorial/Dataset/VGG-Face2/DECA_setting/eval_set.npy'
         # self.data_lines = np.load(datafile).astype('str')
+        
         self.data_lines = list_images(self.workspace_path, self.sr_imagefolder)
         # I will do a new list file and data_line parallelly by instead of the new name.
+        if data_len:
+            self.data_lines = self.data_lines[:data_len]
         
         self.scale = scale #[scale_min, scale_max]
         self.trans_scale = trans_scale #[dx, dy]

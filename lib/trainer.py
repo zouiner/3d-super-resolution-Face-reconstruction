@@ -85,7 +85,7 @@ class Trainer(object):
         if self.cfg['phase'] == 'train':
             while current_step < n_iter:
                 current_epoch += 1
-                for _, train_data in enumerate(self.train_iter):
+                for _, train_data in tqdm(enumerate(self.train_iter), total=len(self.train_iter), desc="Processing training data"):
                     current_step += 1
                     if current_step > n_iter:
                         break

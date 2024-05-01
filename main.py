@@ -31,6 +31,9 @@ def main(cfg):
     # Save config
     shutil.copy(cfg.cfg_file, os.path.join(cfg.output_dir, 'config.yaml'))
     
+    # Set a path for log
+    cfg.path.tb_logger = os.path.join(cfg.output_dir, cfg.train.log_dir, cfg.path.tb_logger)
+    
     # cudnn related setting
     cudnn.benchmark = True
     torch.backends.cudnn.deterministic = False
