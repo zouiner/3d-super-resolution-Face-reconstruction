@@ -1,10 +1,7 @@
 name: "sr_vggf2"
 phase: "train"
-gpu_ids:
-  - 6
-  - 4
-  - 2
-  - 0
+# gpu_ids:
+#   - 0
 path:
   pretrained_modelpath: ""
   log: "logs"
@@ -13,8 +10,9 @@ path:
   checkpoint: "checkpoint"
   resume_state: null
 datasets:
+  K: 0 # use in deca TEMP!!
   train:
-    name: "VGGF2_Train"
+    name: "mocktest"
     mode: "HR"
     dataroot: "contents/vgg_face2_train_32_128"
     datatype: "img"
@@ -25,7 +23,7 @@ datasets:
     use_shuffle: true
     data_len: 10000
   val:
-    name: "VGGF2_eval"
+    name: "mocktest"
     mode: "LRHR"
     dataroot: "contents/vgg_face2_eval_32_128"
     datatype: "img"
@@ -64,18 +62,19 @@ model:
     image_size: 128
     channels: 3
     conditional: true
-train:
-  n_iter: 1000000
-  val_freq: 10000
-  save_checkpoint_freq: 10000
-  print_freq: 200
-  optimizer:
-    type: "adam"
-    lr: 0.0001
-  ema_scheduler:
-    step_start_ema: 5000
-    update_ema_every: 1
-    ema_decay: 0.9999
+sr:
+  train:
+    n_iter: 1000000
+    val_freq: 10000
+    save_checkpoint_freq: 10000
+    print_freq: 200
+    optimizer:
+      type: "adam"
+      lr: 0.0001
+    ema_scheduler:
+      step_start_ema: 5000
+      update_ema_every: 1
+      ema_decay: 0.9999
 wandb:
   project: "sr_vggf2"
 

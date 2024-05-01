@@ -1,0 +1,7 @@
+# Ignore compiled files
+*.pyc
+
+# Ignore directories
+__pycache__/
+.vscode/
+Output/*

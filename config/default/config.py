@@ -11,14 +11,14 @@ cfg = CN()
 abs_deca_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 cfg.deca_dir = abs_deca_dir
 
-cfg.gpu_ids = [0]
+cfg.gpu_ids = None
 
 cfg.name = ""
 cfg.phase = ""
-cfg.debug = True
-cfg.enable_wandb = True
-cfg.log_wandb_ckpt = True
-cfg.log_eval = True
+cfg.debug = None
+cfg.enable_wandb = None
+cfg.log_wandb_ckpt = None
+cfg.log_eval = None
 
 
 cfg.pretrained_modelpath = os.path.join(cfg.deca_dir, 'data', 'deca_model.tar')
@@ -42,7 +42,7 @@ cfg.path.resume_state = None
 cfg.datasets = CN()
 # Train
 cfg.datasets.train = CN()
-cfg.datasets.train.name = "VGGF2_Train"
+cfg.datasets.train.name = "mocktest"
 cfg.datasets.train.mode = "HR"
 cfg.datasets.train.dataroot = "contents/vgg_face2_train_32_128"
 cfg.datasets.train.datatype = "img"
@@ -54,13 +54,22 @@ cfg.datasets.train.use_shuffle = True
 cfg.datasets.train.data_len = 10000
 # Val
 cfg.datasets.val = CN()
-cfg.datasets.val.name = "VGGF2_eval"
+cfg.datasets.val.name = "mocktest"
 cfg.datasets.val.mode = "LRHR"
 cfg.datasets.val.dataroot = "contents/vgg_face2_eval_32_128"
 cfg.datasets.val.datatype = "img"
 cfg.datasets.val.l_resolution = 32
 cfg.datasets.val.r_resolution = 128
 cfg.datasets.val.data_len = 50
+
+# TEMP for DECA
+cfg.datasets.K = 0 # use in deca 
+cfg.datasets.isSingle = False
+cfg.datasets.num_workers = 2
+cfg.datasets.image_size = 224
+cfg.datasets.scale_min = 1.4
+cfg.datasets.scale_max = 1.8
+cfg.datasets.trans_scale = 0.
 
 # ---------------------------------------------------------------------------- #
 # Options for model
@@ -105,38 +114,43 @@ cfg.model.diffusion.conditional = True
 # ---------------------------------------------------------------------------- #
 
 cfg.train = CN()
+cfg.train.log_dir = 'logs'
 
 # SR
-cfg.train.n_iter = 1000000
-cfg.train.val_freq = 10000
-cfg.train.save_checkpoint_freq = 10000
-cfg.train.print_freq = 200
+cfg.sr = CN()
+cfg.sr.train = CN()
+cfg.sr.train.n_iter = 1000000
+cfg.sr.train.val_freq = 10000
+cfg.sr.train.save_checkpoint_freq = 10000
+cfg.sr.train.print_freq = 200
 
-cfg.train.optimizer = CN()
-cfg.train.optimizer.type = "adam"
-cfg.train.optimizer.lr = 0.0001
+cfg.sr.train.optimizer = CN()
+cfg.sr.train.optimizer.type = "adam"
+cfg.sr.train.optimizer.lr = 0.0001
 
-cfg.train.ema_scheduler = CN()
-cfg.train.ema_scheduler.step_start_ema = 5000
-cfg.train.ema_scheduler.update_ema_every = 1
-cfg.train.ema_scheduler.ema_decay = 0.9999
+cfg.sr.train.ema_scheduler = CN()
+cfg.sr.train.ema_scheduler.step_start_ema = 5000
+cfg.sr.train.ema_scheduler.update_ema_every = 1
+cfg.sr.train.ema_scheduler.ema_decay = 0.9999
 
 # Deca
-cfg.train.train_detail = False
-cfg.train.max_epochs = 500
-cfg.train.max_steps = 1000000
-cfg.train.lr = 1e-4
-cfg.train.log_dir = 'logs'
-cfg.train.log_steps = 10
-cfg.train.vis_dir = 'train_images'
-cfg.train.vis_steps = 200
-cfg.train.write_summary = True
-cfg.train.checkpoint_steps = 500
-cfg.train.val_steps = 500
-cfg.train.val_vis_dir = 'val_images'
-cfg.train.eval_steps = 5000
-cfg.train.resume = True
-cfg.train.save_obj = False
+cfg.deca = CN()
+cfg.deca.train = CN()
+cfg.deca.train.train_detail = False
+cfg.deca.train.max_epochs = 500
+cfg.deca.train.max_steps = 1000000
+cfg.deca.train.lr = 1e-4
+cfg.deca.train.log_dir = 'logs'
+cfg.deca.train.log_steps = 10
+cfg.deca.train.vis_dir = 'train_images'
+cfg.deca.train.vis_steps = 200
+cfg.deca.train.write_summary = True
+cfg.deca.train.checkpoint_steps = 500
+cfg.deca.train.val_steps = 500
+cfg.deca.train.val_vis_dir = 'val_images'
+cfg.deca.train.eval_steps = 5000
+cfg.deca.train.resume = True
+cfg.deca.train.save_obj = False
 
 # ---------------------------------------------------------------------------- #
 # Options for log

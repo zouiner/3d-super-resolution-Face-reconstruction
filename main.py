@@ -8,16 +8,27 @@ import torch
 import shutil
 from copy import deepcopy
 
-import core.logger as Logger
+# import core.logger as Logger
+
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '.')))
 np.random.seed(0)
 
+
 def main(cfg):
+    
+    # export CUDA_VISIBLE_DEVICES
+    if cfg.gpu_ids is not None:
+        gpu_list = ','.join(str(id) for id in cfg.gpu_ids)
+
+        os.environ['CUDA_VISIBLE_DEVICES'] = gpu_list
+        print('export CUDA_VISIBLE_DEVICES=' + gpu_list)
+    
     # creat folders
     os.makedirs(os.path.join(cfg.output_dir, cfg.train.log_dir), exist_ok=True)
     with open(os.path.join(cfg.output_dir, cfg.train.log_dir, 'full_config.yaml'), 'w') as f:
         yaml.dump(cfg, f, default_flow_style=False)
+    # Save config
     shutil.copy(cfg.cfg_file, os.path.join(cfg.output_dir, 'config.yaml'))
     
     # cudnn related setting
@@ -42,22 +53,22 @@ def main(cfg):
     #     os.makedirs(os.path.join(cfg.output_dir, cfg.train.val_vis_dir), exist_ok=True)
     #     trainer.fit()
     
+    # test dataloader
+    from lib.trainer import Trainer
+    trainer = Trainer(model=None, config=cfg)
+    
+    trainer.fit()
+    
 def config():
     from config.default.config import parse_args
     
     # parse configs
     args = parse_args()
-    opt = Logger.parse(args)
-    # Convert to NoneDict, which return None for missing key.
-    # opt = Logger.dict_to_nonedict(opt)
     
-    return opt
+    return args
 
 if __name__ == '__main__':
     cfg = config()
-    if cfg.cfg_file is not None:
-        exp_name = cfg.cfg_file.split('/')[-1].split('.')[0]
-        cfg.exp_name = exp_name
     main(cfg)
 
 # run:

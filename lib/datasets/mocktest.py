@@ -1,5 +1,6 @@
 import os, sys
 import torch
+import torchvision
 import torchvision.transforms as transforms
 import numpy as np
 import cv2
@@ -9,81 +10,58 @@ from skimage.transform import estimate_transform, warp, resize, rescale
 from glob import glob
 from torch.utils.data import Dataset, DataLoader, ConcatDataset
 import json
+from PIL import Image
 
-def check_workspace(image_path):
+
+def list_images(workspace_path, folder_path):
+    image_files = []
+    data_list_path = os.path.join(workspace_path, 'data_list.npy')
     
-    # Find the index of "data" in the path
-    data_index = image_path.find("data")
-
-    if data_index != -1:
-        # Extract the base directory dynamically
-        base_directory = image_path[:data_index + len("data")]
-
-        # Get the relative path
-        b = os.path.relpath(image_path, base_directory)
-
-        # print("Base directory:", base_directory)
-        # print("Relative path:", b)
-        
-        return base_directory, b
-    
+    if os.path.exists(data_list_path):
+        image_files = np.load(data_list_path)
     else:
-        print("No 'data' directory found in the path. Your list file already clean a workspace path.")
-        
-        return None, None
+        image_extensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp']  # Add more if needed
+        for file in os.listdir(folder_path):
+            if os.path.isfile(os.path.join(folder_path, file)):
+                _, ext = os.path.splitext(file)
+                if ext.lower() in image_extensions:
+                    image_files.append(file)
+        image_files.sort()
+        if image_files:  # Check if list is not empty before saving
+            np.save(data_list_path, image_files)
+    
+    return image_files
 
-def image_path(directory, amount = 1, random_set = False, extensions=['*.jpg', '*.png', '*.jpeg']):
-        
-        savepath = directory[:-5]    
-        if os.path.exists(savepath + '/data_list.npy'):
-            image_paths = np.load(savepath + '/data_list.npy')
-            base_directory, _ = check_workspace(image_paths[0])
-            if base_directory == None:
-                if base_directory not in savepath:
-                    new_list = []
-                    for i in image_paths:
-                        name = remove_workspace_path(i, base_directory)
-                        new_list.append(os.path.join(directory, name))
-                    image_paths = new_list
-            print('Found: list of images')
-        else:
-            print('Not Found: list of images')
-            # Use glob to find image file paths in the directory and its subdirectories
-            image_paths = []
-            for extension in extensions:
-                image_paths.extend(glob(os.path.join(savepath, '**', extension), recursive=True))
-            image_paths.sort()
-            np.save(savepath + '/data_list.npy', image_paths)
 
-        if random_set:
-            
-            if os.path.exists(savepath + '/data_list_fixamount.npy'):
-                image_paths = np.load(savepath + '/data_list_fixamount.npy')
-            else:
-                # Randomly shuffle the subfolders
-                random.shuffle(image_paths)
-                np.save(savepath + '/data_list_fixamount.npy', image_paths)
-                
-        if amount != 1:
-            image_paths = image_paths[:int(len(image_paths) * amount)]
-            
-        
-        print("Found image paths:", len(image_paths), 'image(s)')
-        
-        return image_paths
+def transform_augment(img_list, split='val', min_max=(0, 1)):    
+    totensor = torchvision.transforms.ToTensor()
+    hflip = torchvision.transforms.RandomHorizontalFlip()
+    
+    imgs = [totensor(img) for img in img_list]
+    if split == 'train':
+        imgs = torch.stack(imgs, 0)
+        imgs = hflip(imgs)
+        imgs = torch.unbind(imgs, dim=0)
+    ret_img = [img * (min_max[1] - min_max[0]) + min_max[0] for img in imgs]
+    return ret_img
 
 class mockDataset(Dataset):
-    def __init__(self, K, image_size, scale, trans_scale = 0, isEval = False, isTest = False):
+    def __init__(self, K, image_size, l_resolution, r_resolution, scale, trans_scale = 0, isEval = False, isTest = False, need_LR = False, split = 'train'):
         '''
         K must be less than 6
         '''
         self.K = K
         self.image_size = image_size
-        self.workspace_path = '/shared/storage/cs/staffstore/ps1510/Tutorial/Dataset/VGG-Face2'
-        # if isEval:
-        #     self.workspace_path = '/shared/storage/cs/staffstore/ps1510/Tutorial/Dataset/CelebA_mock_split/val'
-        # if isTest:
-        #     self.workspace_path = '/shared/storage/cs/staffstore/ps1510/Tutorial/Dataset/CelebA_mock_split/test'
+        self.lr_size = l_resolution
+        self.hr_size = r_resolution
+        self.sr_size = self.hr_size
+        self.workspace_path = '/shared/storage/cs/staffstore/ps1510/Tutorial/Image-Super-Resolution-via-Iterative-Refinement/contents/vgg_face2'
+        if isEval:
+            self.workspace_path = self.workspace_path + '_val' 
+        else:
+            self.workspace_path = self.workspace_path + '_train' 
+        
+        self.workspace_path = self.workspace_path + '_' + str(self.lr_size) + '_' + str(self.hr_size)
             
         # self.imagefolder = self.workspace_path + '/data'
         # self.kptfolder = self.workspace_path + '/labels/landmark'
@@ -104,75 +82,101 @@ class mockDataset(Dataset):
         
         # From original
         
-        self.imagefolder = self.workspace_path + '/data/train'
-        self.kptfolder = self.workspace_path + '/labels/landmark/train'
-        self.segfolder = self.workspace_path + '/labels/skinmask/train'
         
-        datafile = '/shared/storage/cs/staffstore/ps1510/Tutorial/Dataset/VGG-Face2/DECA_setting/train_set.npy'
-        if isEval or isTest:
-            datafile = '/shared/storage/cs/staffstore/ps1510/Tutorial/Dataset/VGG-Face2/DECA_setting/eval_set.npy'
-        self.data_lines = np.load(datafile).astype('str')
+        self.lr_imagefolder = self.workspace_path + '/lr_' + str(self.lr_size) 
+        self.sr_imagefolder = self.workspace_path + '/sr_' + str(self.lr_size) +  '_' + str(self.sr_size)
+        self.hr_imagefolder = self.workspace_path + '/hr_' + str(self.hr_size)
+        # self.kptfolder = self.workspace_path + '/labels/landmark/'
+        # self.segfolder = self.workspace_path + '/labels/skinmask/'
+        
+        # datafile = '/shared/storage/cs/staffstore/ps1510/Tutorial/Dataset/VGG-Face2/DECA_setting/train_set.npy'
+        # if isEval or isTest:
+        #     datafile = '/shared/storage/cs/staffstore/ps1510/Tutorial/Dataset/VGG-Face2/DECA_setting/eval_set.npy'
+        # self.data_lines = np.load(datafile).astype('str')
+        self.data_lines = list_images(self.workspace_path, self.sr_imagefolder)
+        # I will do a new list file and data_line parallelly by instead of the new name.
         
         self.scale = scale #[scale_min, scale_max]
         self.trans_scale = trans_scale #[dx, dy]
+        
+        self.need_LR = need_LR
+        
+        self.split = split
         
 
     def __len__(self):
         return len(self.data_lines)
 
     def __getitem__(self, idx):
-        images_list = []; kpt_list = []; mask_list = []
+        sr_images_list = []; hr_images_list = []; kpt_list = []; mask_list = []
 
-        # random_ind = [0]
-        random_ind = np.random.permutation(5)[:self.K]
+        random_ind = [0]
+        # random_ind = np.random.permutation(5)[:self.K]
         for i in random_ind:
-            name = self.data_lines[idx, i]
+            # name = self.data_lines[idx, i]
             # name = os.path.splitext(str(name))[0]
             # name = name[len(self.imagefolder)+1:]
             
-            image_path = os.path.join(self.imagefolder, name + '.jpg')  
-            seg_path = os.path.join(self.segfolder, name + '.npy')  
-            kpt_path = os.path.join(self.kptfolder, name + '.npy')
+            name = self.data_lines[idx]
+            lr_image_path = os.path.join(self.lr_imagefolder, name)
+            sr_image_path = os.path.join(self.sr_imagefolder, name) # + '.jpg')
+            hr_image_path = os.path.join(self.hr_imagefolder, name)
+            # seg_path = os.path.join(self.segfolder, name + '.npy')  
+            # kpt_path = os.path.join(self.kptfolder, name + '.npy')
                                             
-            image = imread(image_path)/255.
-            kpt = np.load(kpt_path)[0]
-            mask = self.load_mask(seg_path, image.shape[0], image.shape[1])
+            # image = imread(sr_image_path)/255.
+            # kpt = np.load(kpt_path)[0]
+            # mask = self.load_mask(seg_path, image.shape[0], image.shape[1])
 
-            ### crop information
-            tform = self.crop(image, kpt)
-            ## crop 
-            cropped_image = warp(image, tform.inverse, output_shape=(self.image_size, self.image_size))
-            cropped_mask = warp(mask, tform.inverse, output_shape=(self.image_size, self.image_size), order = 0) 
-            # # add by patipol
-            # cropped_mask = np.where(cropped_mask != 0., 1, 0)
-            # # add by patipol
-            cropped_kpt = np.dot(tform.params, np.hstack([kpt, np.ones([kpt.shape[0],1])]).T).T # np.linalg.inv(tform.params)
+            # ### crop information
+            # tform = self.crop(image, kpt)
+            # ## crop 
+            # cropped_image = warp(image, tform.inverse, output_shape=(self.image_size, self.image_size))
+            # cropped_mask = warp(mask, tform.inverse, output_shape=(self.image_size, self.image_size), order = 0) 
+            # # # add by patipol
+            # # cropped_mask = np.where(cropped_mask != 0., 1, 0)
+            # # # add by patipol
+            # cropped_kpt = np.dot(tform.params, np.hstack([kpt, np.ones([kpt.shape[0],1])]).T).T # np.linalg.inv(tform.params)
 
 
-            # normalized kpt
-            cropped_kpt[:,:2] = cropped_kpt[:,:2]/self.image_size * 2  - 1
+            # # normalized kpt
+            # cropped_kpt[:,:2] = cropped_kpt[:,:2]/self.image_size * 2  - 1
 
-            # Visualise cropped_img, cropped_mask, and overlay the cropped_ktp onto cropped_img
+            # # Visualise cropped_img, cropped_mask, and overlay the cropped_ktp onto cropped_img
 
-            images_list.append(cropped_image.transpose(2,0,1))
-            # images_list.append(cropped_image)
-            kpt_list.append(cropped_kpt)
-            mask_list.append(cropped_mask)
+            # images_list.append(cropped_image.transpose(2,0,1))
+            # kpt_list.append(cropped_kpt)
+            # mask_list.append(cropped_mask)
 
         
-        ### Check actual shape is?
-        images_array = torch.from_numpy(np.array(images_list)).type(dtype = torch.float32) #K,224,224,3
-        kpt_array =  torch.from_numpy(np.array(kpt_list)).type(dtype = torch.float32) #K,224,224,3
-        mask_array = torch.from_numpy(np.array(mask_list)).type(dtype = torch.float32) #K,224,224,3
+        ### 
+        # images_array = torch.from_numpy(np.array(images_list)).type(dtype = torch.float32) #K,224,224,3
+        # kpt_array =  torch.from_numpy(np.array(kpt_list)).type(dtype = torch.float32) #K,224,224,3
+        # mask_array = torch.from_numpy(np.array(mask_list)).type(dtype = torch.float32) #K,224,224,3
         
                  
-        data_dict = {
-            'image': images_array,
-            'landmark': kpt_array,
-            'mask': mask_array
-        }
+        # data_dict = {
+        #     'image': images_array,
+        #     'landmark': kpt_array,
+        #     'mask': mask_array
+        # }
         
-        return data_dict
+        # return data_dict
+        
+        img_HR = Image.open(hr_image_path).convert("RGB")
+        img_SR = Image.open(sr_image_path).convert("RGB")
+        if self.need_LR:
+            img_LR = Image.open(lr_image_path).convert("RGB")
+        if self.need_LR:
+            [img_LR, img_SR, img_HR] = transform_augment(
+                [img_LR, img_SR, img_HR], split=self.split, min_max=(-1, 1))
+            return {'LR': img_LR, 'HR': img_HR, 'SR': img_SR, 'Index': idx}
+        else:
+            [img_SR, img_HR] = transform_augment(
+                [img_SR, img_HR], split=self.split, min_max=(-1, 1))
+            return {'HR': img_HR, 'SR': img_SR, 'Index': idx}
+        
+        
     
     def crop(self, image, kpt):
         left = np.min(kpt[:,0]); right = np.max(kpt[:,0]); 
