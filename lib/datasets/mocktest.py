@@ -96,19 +96,24 @@ class mockDataset(Dataset):
         
         self.data_lines = list_images(self.workspace_path, self.sr_imagefolder)
         # I will do a new list file and data_line parallelly by instead of the new name.
-        if data_len:
-            self.data_lines = self.data_lines[:data_len]
+        # if data_len:
+        #     self.data_lines = self.data_lines[:data_len]
         
         self.scale = scale #[scale_min, scale_max]
         self.trans_scale = trans_scale #[dx, dy]
         
         self.need_LR = need_LR
-        
         self.split = split
+        
+        self.dataset_len = len(self.data_lines)
+        if data_len <= 0:
+            self.data_len = self.dataset_len
+        else:
+            self.data_len = min(data_len, self.dataset_len)
         
 
     def __len__(self):
-        return len(self.data_lines)
+        return self.data_len
 
     def __getitem__(self, idx):
         sr_images_list = []; hr_images_list = []; kpt_list = []; mask_list = []

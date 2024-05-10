@@ -29,7 +29,7 @@ datasets:
     datatype: "img"
     l_resolution: 32
     r_resolution: 128
-    data_len: 50
+    data_len: 3
 model:
   which_model_G: "sr3"
   finetune_norm: false

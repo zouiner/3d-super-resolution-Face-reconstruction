@@ -122,6 +122,9 @@ class DDPM(BaseModel):
         logger.info(s)
 
     def save_network(self, epoch, iter_step):
+        checkpoint_dir = self.opt['path']['checkpoint']
+        if not os.path.exists(checkpoint_dir):
+            os.makedirs(checkpoint_dir)
         gen_path = os.path.join(
             self.opt['path']['checkpoint'], 'I{}_E{}_gen.pth'.format(iter_step, epoch))
         opt_path = os.path.join(

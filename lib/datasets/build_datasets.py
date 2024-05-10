@@ -36,7 +36,7 @@ def build_train(config, is_train=True):
     if 'mocktest' in config.train.name:
         data_list.append(mockDataset(K=config.K, image_size=config.image_size, 
                                          l_resolution = config.train.l_resolution, r_resolution = config.train.r_resolution, 
-                                         scale=[config.scale_min, config.scale_max], trans_scale=config.trans_scale))
+                                         scale=[config.scale_min, config.scale_max], trans_scale=config.trans_scale, data_len = config.train.data_len))
     if 'mocktest_old' in config.train.name:
         data_list.append(mockDataset_old(K=config.K, image_size=config.image_size, 
                                          l_resolution = config.train.l_resolution, r_resolution = config.train.r_resolution, 
@@ -58,7 +58,7 @@ def build_val(config, is_train=True):
     if 'mocktest' in config.val.name:
         data_list.append(mockDataset(K=config.K, image_size=config.image_size, 
                                          l_resolution = config.train.l_resolution, r_resolution = config.train.r_resolution, 
-                                         scale=[config.scale_min, config.scale_max], trans_scale=config.trans_scale))
+                                         scale=[config.scale_min, config.scale_max], trans_scale=config.trans_scale, data_len = config.val.data_len, need_LR = True, split = 'val'))
     if 'mocktest_old' in config.val.name:
         data_list.append(mockDataset_old(K=config.K, image_size=config.image_size, 
                                          l_resolution = config.train.l_resolution, r_resolution = config.train.r_resolution, 

@@ -33,6 +33,8 @@ def main(cfg):
     
     # Set a path for log
     cfg.path.tb_logger = os.path.join(cfg.output_dir, cfg.train.log_dir, cfg.path.tb_logger)
+    cfg.path.results = os.path.join(cfg.output_dir, cfg.path.results)
+    cfg.path.checkpoint = os.path.join(cfg.output_dir, cfg.path.checkpoint)
     
     # cudnn related setting
     cudnn.benchmark = True

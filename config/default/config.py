@@ -60,7 +60,7 @@ cfg.datasets.val.dataroot = "contents/vgg_face2_eval_32_128"
 cfg.datasets.val.datatype = "img"
 cfg.datasets.val.l_resolution = 32
 cfg.datasets.val.r_resolution = 128
-cfg.datasets.val.data_len = 50
+cfg.datasets.val.data_len = 3
 
 # TEMP for DECA
 cfg.datasets.K = 0 # use in deca 
