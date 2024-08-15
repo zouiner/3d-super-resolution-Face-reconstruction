@@ -16,6 +16,9 @@ class DDPM(BaseModel):
         self.netG = self.set_device(networks.define_G(opt))
         self.schedule_phase = None
 
+        # Temp set the intial opt
+        opt = opt['sr']
+        
         # set loss and load resume state
         self.set_loss()
         self.set_new_noise_schedule(
@@ -37,7 +40,7 @@ class DDPM(BaseModel):
                 optim_params = list(self.netG.parameters())
 
             self.optG = torch.optim.Adam(
-                optim_params, lr=opt['sr']['train']["optimizer"]["lr"])
+                optim_params, lr=opt['train']["optimizer"]["lr"])
             self.log_dict = OrderedDict()
         self.load_network()
         self.print_network()
@@ -51,11 +54,12 @@ class DDPM(BaseModel):
         # need to average in multi-gpu
         b, c, h, w = self.data['HR'].shape
         l_pix = l_pix.sum()/int(b*c*h*w) # pixel-wise loss?
-        l_pix.backward()
-        self.optG.step()
+        # l_pix.backward()
+        # self.optG.step()
 
         # set log
         self.log_dict['l_pix'] = l_pix.item()
+        return l_pix
 
     def test(self, continous=False):
         self.netG.eval()
@@ -102,7 +106,8 @@ class DDPM(BaseModel):
         else:
             out_dict['SR'] = self.SR.detach().float().cpu()
             out_dict['INF'] = self.data['SR'].detach().float().cpu()
-            out_dict['HR'] = self.data['HR'].detach().float().cpu()
+            if 'HR' in self.data:                        # !!take a look!! -> because just want only SR
+                out_dict['HR'] = self.data['HR'].detach().float().cpu()
             if need_LR and 'LR' in self.data:
                 out_dict['LR'] = self.data['LR'].detach().float().cpu()
             else:
@@ -122,10 +127,13 @@ class DDPM(BaseModel):
         logger.info(s)
 
     def save_network(self, epoch, iter_step):
+        checkpoint_dir = self.opt['path']['checkpoint']
+        if not os.path.exists(checkpoint_dir):
+            os.makedirs(checkpoint_dir)
         gen_path = os.path.join(
-            self.opt['path']['checkpoint'], 'I{}_E{}_gen.pth'.format(iter_step, epoch))
+            self.opt['path']['checkpoint_sr'], 'I{}_E{}_gen.pth'.format(iter_step, epoch))
         opt_path = os.path.join(
-            self.opt['path']['checkpoint'], 'I{}_E{}_opt.pth'.format(iter_step, epoch))
+            self.opt['path']['checkpoint_sr'], 'I{}_E{}_opt.pth'.format(iter_step, epoch))
         # gen
         network = self.netG
         if isinstance(self.netG, nn.DataParallel):
@@ -144,7 +152,7 @@ class DDPM(BaseModel):
             'Saved model in [{:s}] ...'.format(gen_path))
 
     def load_network(self):
-        load_path = self.opt['path']['resume_state']
+        load_path = self.opt['sr']['pretrained_model_path']
         if load_path is not None:
             logger.info(
                 'Loading pretrained model for G [{:s}] ...'.format(load_path))
@@ -155,9 +163,10 @@ class DDPM(BaseModel):
             if isinstance(self.netG, nn.DataParallel):
                 network = network.module
             network.load_state_dict(torch.load(
-                gen_path), strict=(not self.opt['model']['finetune_norm']))
+                gen_path), strict=(not self.opt['sr']['model']['finetune_norm']))
             # network.load_state_dict(torch.load(
             #     gen_path), strict=False)
+            # network.num_timesteps = 500 # !!temp!!
             if self.opt['phase'] == 'train':
                 # optimizer
                 opt = torch.load(opt_path)

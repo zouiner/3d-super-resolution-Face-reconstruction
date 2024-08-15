@@ -8,57 +8,57 @@ import torch
 import shutil
 from copy import deepcopy
 
+# mica
+from lib.MICA.utils import util
+
 # import core.logger as Logger
 
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '.')))
-np.random.seed(0)
+
 
 
 def main(cfg):
     
     # export CUDA_VISIBLE_DEVICES
-    if cfg.gpu_ids is not None:
-        gpu_list = ','.join(str(id) for id in cfg.gpu_ids)
+    if cfg.device is not None:
+        gpu_list = ','.join(str(id) for id in cfg.device_id)
 
         os.environ['CUDA_VISIBLE_DEVICES'] = gpu_list
         print('export CUDA_VISIBLE_DEVICES=' + gpu_list)
+        cfg.gpu_ids = [i for i in range(len(cfg.device_id))]
+        if len(gpu_list) > 1:
+            cfg.distributed = True
+        else:
+            cfg.distributed = False
     
-    # creat folders
-    os.makedirs(os.path.join(cfg.output_dir, cfg.train.log_dir), exist_ok=True)
+    
+    
+    # Setting a path for log
+    cfg.path.tb_logger = os.path.join(cfg.output_dir, cfg.train.log_dir, cfg.path.tb_logger)
+    cfg.path.results = os.path.join(cfg.output_dir, cfg.path.results)
+    cfg.path.checkpoint_sr = os.path.join(cfg.output_dir, cfg.path.checkpoint_sr)
+    cfg.path.checkpoint_mica = os.path.join(cfg.output_dir, cfg.path.checkpoint_mica)
+    cfg.path.results_mica = os.path.join(cfg.output_dir, 'train_images_mica')
+    cfg.mica.output_dir = cfg.output_dir # !!take a look!! it uses duplicate form
+    #  creat folders
+    for i in cfg.path:
+        os.makedirs(os.path.join(cfg.output_dir, cfg.path[i]), exist_ok=True)
+    
     with open(os.path.join(cfg.output_dir, cfg.train.log_dir, 'full_config.yaml'), 'w') as f:
         yaml.dump(cfg, f, default_flow_style=False)
-    # Save config
-    shutil.copy(cfg.cfg_file, os.path.join(cfg.output_dir, 'config.yaml'))
     
-    # Set a path for log
-    cfg.path.tb_logger = os.path.join(cfg.output_dir, cfg.train.log_dir, cfg.path.tb_logger)
+    # cudnn related setting - SR
     
-    # cudnn related setting
     cudnn.benchmark = True
-    torch.backends.cudnn.deterministic = False
-    torch.backends.cudnn.enabled = True
+    cudnn.deterministic = False
+    cudnn.enabled = True
+    # torch.cuda.empty_cache()
+    # deterministic(rank) - MICA
 
-    # # start training -- DECA
-    # from decalib.deca import DECA
-    # from lib.trainer import Trainer
-    # cfg.rasterizer_type = 'pytorch3d'
-    
-    # device = torch.device(cfg.device)
-    # deca = DECA(cfg, device = device)
-    # trainer = Trainer(model=deca, config=cfg, device = device)
-
-    # # start train
-    # if cfg.dataset.test_mode:
-    #     trainer.test_img(cfg.dataset.test_data)
-    # else:
-    #     os.makedirs(os.path.join(cfg.output_dir, cfg.train.vis_dir), exist_ok=True)
-    #     os.makedirs(os.path.join(cfg.output_dir, cfg.train.val_vis_dir), exist_ok=True)
-    #     trainer.fit()
-    
-    # test dataloader
     from lib.trainer import Trainer
-    trainer = Trainer(model=None, config=cfg)
+    nfc = util.find_model_using_name(model_dir='lib.MICA.micalib.models', model_name=cfg.mica.model.name)(cfg.mica, cfg.gpu_ids) # int(gpu_list[0])
+    trainer = Trainer(model=nfc, config=cfg)
     
     trainer.fit()
     

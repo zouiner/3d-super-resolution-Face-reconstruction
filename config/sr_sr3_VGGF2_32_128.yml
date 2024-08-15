@@ -1,70 +1,70 @@
-name: "sr_vggf2"
+name: "sr_vggf2_3"
 phase: "train"
-# gpu_ids:
-#   - 0
+device_id: [4,5,6]
+
 path:
-  pretrained_modelpath: ""
   log: "logs"
   tb_logger: "tb_logger"
   results: "results"
-  checkpoint: "checkpoint"
-  resume_state: null
-datasets:
-  K: 0 # use in deca TEMP!!
-  train:
-    name: "mocktest"
-    mode: "HR"
-    dataroot: "contents/vgg_face2_train_32_128"
-    datatype: "img"
-    l_resolution: 32
-    r_resolution: 128
-    batch_size: 4
-    num_workers: 8
-    use_shuffle: true
-    data_len: 10000
-  val:
-    name: "mocktest"
-    mode: "LRHR"
-    dataroot: "contents/vgg_face2_eval_32_128"
-    datatype: "img"
-    l_resolution: 32
-    r_resolution: 128
-    data_len: 50
-model:
-  which_model_G: "sr3"
-  finetune_norm: false
-  unet:
-    in_channel: 6
-    out_channel: 3
-    inner_channel: 64
-    channel_multiplier:
-      - 1
-      - 2
-      - 4
-      - 8
-      - 8
-    attn_res:
-      - 16
-    res_blocks: 2
-    dropout: 0.2
-  beta_schedule:
-    train:
-      schedule: "linear"
-      n_timestep: 2000
-      linear_start: 0.000001
-      linear_end: 0.01
-    val:
-      schedule: "linear"
-      n_timestep: 2000
-      linear_start: 0.000001
-      linear_end: 0.01
-  diffusion:
-    image_size: 128
-    channels: 3
-    conditional: true
+  checkpoint_sr: "checkpoint_sr"
+  checkpoint_mica: "checkpoint_mica"
+  
 sr:
+  pretrained_model_path: '/shared/storage/cs/staffstore/ps1510/Tutorial/Image-Super-Resolution-via-Iterative-Refinement/experiments/sr_vggf2_32_128_240507_154330/checkpoint/I4000000_E1600'
+  datasets:
+    train:
+      name: "NoW_32_128"
+      mode: "HR"
+      dataroot: "contents/NoW_32_128"
+      datatype: "img"
+      l_resolution: 32
+      r_resolution: 128
+      batch_size: 4
+      num_workers: 8
+      use_shuffle: true
+      data_len: -1
+    val:
+      name: "NoW_32_128"
+      mode: "LRHR"
+      dataroot: "contents/NoW_32_128"
+      datatype: "img"
+      l_resolution: 32
+      r_resolution: 128
+      data_len: 10
+  model:
+    which_model_G: "sr3"
+    finetune_norm: false
+    unet:
+      in_channel: 6
+      out_channel: 3
+      inner_channel: 64
+      channel_multiplier:
+        - 1
+        - 2
+        - 4
+        - 8
+        - 8
+      attn_res:
+        - 16
+      res_blocks: 2
+      dropout: 0.2
+    beta_schedule:
+      train:
+        schedule: "linear"
+        n_timestep: 2000
+        linear_start: 0.000001
+        linear_end: 0.01
+      val:
+        schedule: "linear"
+        n_timestep: 2000
+        linear_start: 0.000001
+        linear_end: 0.01
+    diffusion:
+      image_size: 128
+      channels: 3
+      conditional: true
   train:
-    n_iter: 1000000
+    n_iter: 4000000
     val_freq: 10000
     save_checkpoint_freq: 10000
     print_freq: 200
@@ -75,8 +75,37 @@ sr:
       step_start_ema: 5000
       update_ema_every: 1
       ema_decay: 0.9999
+# ----------------------------------------------------------------
+# MICA congifg
+mica:
+  pretrained_model_path: '' 
+  model:
+      use_pretrained: False
+      n_shape: 300
+      name: 'mica'
+  datasets:
+    root: '/shared/storage/cs/staffstore/ps1510/Tutorial/3d-super-resolution-Face-reconstruction/datasets/arcface'
+    training_data: [ 'LYHM' ]
+    eval_data: [ 'LYHM' ]
+    dataset_path: 'contents/'
+    num_workers: 4
+    batch_size: 2
+    K: 2
+  train:
+    lr: 1e-5
+    arcface_lr: 1e-5
+    weight_decay: 2e-4
+    use_mask: True
+    reset_optimizer: False
+    max_steps: 160000
+    log_steps: 50
+    val_steps: 1 #300
+    vis_steps: 1 #1200
+    val_save_img: 30 #1200
+    checkpoint_steps: 15 #1000
+    checkpoint_epochs_steps: 100 #10000
+
+# -------------------------------------------------------------------------
+
 wandb:
   project: "sr_vggf2"
-
-
-# python main.py -p train -c config/sr_sr3_VGGF2_32_128.yml
