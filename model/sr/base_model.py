@@ -29,8 +29,11 @@ class BaseModel():
     def set_device(self, x):
         if isinstance(x, dict):
             for key, item in x.items():
-                if item is not None:
-                    x[key] = item.to(self.device)
+                try:
+                    if item is not None:
+                        x[key] = item.to(self.device)
+                except:
+                    pass
         elif isinstance(x, list):
             for item in x:
                 if item is not None:

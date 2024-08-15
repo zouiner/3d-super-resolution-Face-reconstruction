@@ -13,15 +13,21 @@ from loguru import logger
 from datetime import datetime
 from tqdm import tqdm
 
-from .datasets import build_datasets
 
 from tensorboardX import SummaryWriter
 import logging
 
 import torch
+# import torch.distributed as dist  # with the code in load_checkpoint
 import model.sr as Model
 import core.metrics as Metrics
+from lib.MICA.utils import util
 
+import datasets
+import random
+
+sys.path.append("./lib/MICA/micalib")
+from validator import Validator
 
 # add by Patipol
 # import matplotlib.pyplot as plt
@@ -29,19 +35,33 @@ import core.metrics as Metrics
 # from PIL import Image, ImageDraw
 # import torchvision.transforms as transforms
 
+def print_info(rank):
+    props = torch.cuda.get_device_properties(rank)
 
+    logger.info(f'[INFO]            {torch.cuda.get_device_name(rank)}')
+    logger.info(f'[INFO] Rank:      {str(rank)}')
+    logger.info(f'[INFO] Memory:    {round(props.total_memory / 1024 ** 3, 1)} GB')
+    logger.info(f'[INFO] Allocated: {round(torch.cuda.memory_allocated(rank) / 1024 ** 3, 1)} GB')
+    logger.info(f'[INFO] Cached:    {round(torch.cuda.memory_reserved(rank) / 1024 ** 3, 1)} GB')
+
+
+def seed_worker(worker_id):
+    worker_seed = torch.initial_seed() % 2 ** 32
+    np.random.seed(worker_seed)
+    random.seed(worker_seed)
 
 
 class Trainer(object):
-    def __init__(self, model, config=None, device='cuda'):
+    def __init__(self, model, config=None, device=None):
         if config is None:
             self.cfg = cfg
         else:
             self.cfg = config
-        self.device = device
-        self.batch_size = self.cfg.datasets.train.batch_size
-        self.l_image_size = self.cfg.datasets.train.l_resolution
-        self.r_image_size = self.cfg.datasets.train.r_resolution
+        self.device = [i for i in range(len(self.cfg.device_id))]
+        self.batch_size_sr = self.cfg.sr.datasets.train.batch_size
+        self.l_image_size = self.cfg.sr.datasets.train.l_resolution
+        self.r_image_size = self.cfg.sr.datasets.train.r_resolution
+        self.batch_size_mica = self.cfg.mica.datasets.batch_size
         
         self.tb_logger = SummaryWriter(log_dir=self.cfg.path.tb_logger)
         if self.cfg.enable_wandb:
@@ -55,158 +75,383 @@ class Trainer(object):
             self.wandb_logger = None
         
         # SR model
-        # self.sr = model.to(self.device)
-        # self.configure_optimizers()
-        # self.load_checkpoint()
+        # model
+        self.diffusion = Model.create_model(self.cfg) # -> load_model inside funct.
+        logger.info('Initial Model Finished')
+        
+        # MICA model 
+        # self.nfc = model.to(self.device)
+        self.nfc = model #!!take a look!! 
+        # If there are multiple devices, wrap the model with DataParallel
+        if torch.cuda.device_count() > 1:
+            self.nfc = nn.DataParallel(self.nfc, device_ids=self.device)
+            self.diffusion = nn.DataParallel(self.diffusion, device_ids=self.device)
+            # Move model to the primary device
+            self.nfc = self.nfc.to(self.device[0]).module
+            self.diffusion = self.diffusion.to(self.device[0]).module
+        else:
+            self.nfc = self.nfc.to(self.device)
+            self.diffusion = self.diffusion.to(self.device)
+
+        
+        '''
+        Exception has occurred: TypeError
+        to() received an invalid combination of arguments - got (list), but expected one of:
+        * (torch.device device, torch.dtype dtype, bool non_blocking, bool copy, *, torch.memory_format memory_format)
+        * (torch.dtype dtype, bool non_blocking, bool copy, *, torch.memory_format memory_format)
+        * (Tensor tensor, bool non_blocking, bool copy, *, torch.memory_format memory_format)
+        File "/shared/storage/cs/staffstore/ps1510/Tutorial/3d-super-resolution-Face-reconstruction/lib/trainer.py", line 81, in __init__
+            self.nfc = model.to(self.device)
+        File "/shared/storage/cs/staffstore/ps1510/Tutorial/3d-super-resolution-Face-reconstruction/main.py", line 57, in main
+            trainer = Trainer(model=nfc, config=cfg)
+        File "/shared/storage/cs/staffstore/ps1510/Tutorial/3d-super-resolution-Face-reconstruction/main.py", line 71, in <module>
+            main(cfg)
+        TypeError: to() received an invalid combination of arguments - got (list), but expected one of:
+        * (torch.device device, torch.dtype dtype, bool non_blocking, bool copy, *, torch.memory_format memory_format)
+        * (torch.dtype dtype, bool non_blocking, bool copy, *, torch.memory_format memory_format)
+        * (Tensor tensor, bool non_blocking, bool copy, *, torch.memory_format memory_format)
+        
+        self.device
+        [device(type='cuda', index=0), device(type='cuda', index=2)]
+        
+        --- search in chatgpt
+        '''
+
+        self.validator = Validator(self)
+        self.configure_optimizers()
+        self.load_checkpoint()
+        
+        # # reset optimizer if loaded from pretrained model
+        # if self.cfg.train.reset_optimizer:
+        #     self.configure_optimizers()  # reset optimizer
+        #     logger.info(f"[TRAINER] Optimizer was reset")
+
+        # if self.cfg.train.write_summary and self.device == 0:
+        #     from torch.utils.tensorboard import SummaryWriter
+        #     self.writer = SummaryWriter(log_dir=os.path.join(self.cfg.output_dir, self.cfg.train.log_dir))
+
+        # print_info(device)
 
         # initialize loss  
+        
+    def get_device(self, device, device_id):
+        if device == 'cuda' and torch.cuda.is_available():
+            return [torch.device(f'cuda:{i}') for i in device_id]
+        else:
+            return torch.device('cpu')
     
     
     def configure_optimizers(self):
+        # sr
+        # self.opt_sr = torch.optim.Adam(
+        #                         lr=self.cfg.sr.train.optimizer.lr,
+        #                         amsgrad=False)
+        # mica
         
-        self.opt = torch.optim.Adam(
-                                lr=self.cfg.sr.train.optimizer.lr,
-                                amsgrad=False)
+        params = self.nfc.parameters_to_optimize()
+        
+        self.opt = torch.optim.AdamW(
+            lr=self.cfg.mica.train.lr,
+            weight_decay=self.cfg.mica.train.weight_decay,
+            params=params,
+            amsgrad=False)
+
+        self.scheduler = torch.optim.lr_scheduler.StepLR(self.opt, step_size=1, gamma=0.1)
             
     
     def load_checkpoint(self):
-        pass
+        
+        # SR
+        # Already in the model.py for SR
+        
+        # mica
+        self.epoch = 0
+        self.global_step = 0
+        # dist.barrier() # !!take a look!! for multi gpu
+        # map_location = {'cuda:%d' % 0: 'cuda:%d' % self.device} # !!take a look!! for multi gpu
+        map_location = {'cuda:%d' % 0: 'cuda:%d' % self.device[0]}
+        model_path = os.path.join(self.cfg.mica.output_dir, 'model_mica.tar')
+        if os.path.exists(self.cfg.mica.pretrained_model_path):
+            model_path = self.cfg.mica.pretrained_model_path
+        if os.path.exists(model_path):
+            checkpoint = torch.load(model_path, map_location)
+            if 'opt' in checkpoint:
+                self.opt.load_state_dict(checkpoint['opt'])
+            if 'scheduler' in checkpoint:
+                self.scheduler.load_state_dict(checkpoint['scheduler'])
+            if 'epoch' in checkpoint:
+                self.current_epoch = checkpoint['epoch']
+            if 'global_step' in checkpoint:
+                self.global_step = checkpoint['global_step']
+            logger.info(f"[TRAINER] Resume training from {model_path}")
+            logger.info(f"[TRAINER] Start from step {self.global_step}")
+            logger.info(f"[TRAINER] Start from epoch {self.epoch}")
+        else:
+            logger.info('[TRAINER] Model path not found, start training from scratch')
+            
+    def save_checkpoint(self, filename):
+        
+        model_dict = self.nfc.model_dict()
+
+        model_dict['opt'] = self.opt.state_dict()
+        model_dict['scheduler'] = self.scheduler.state_dict()
+        model_dict['validator'] = self.validator.state_dict()
+        model_dict['epoch'] = self.current_epoch
+        model_dict['global_step'] = self.global_step
+        model_dict['batch_size'] = self.batch_size_mica
+
+        torch.save(model_dict, filename)
+            
+    def filter_and_slice_train_data(self, train_data, order, keys_to_keep_and_slice = {'HR', 'SR', 'LR'}, keys_to_keep = {'Index'}):
+    
+        # Create a new dictionary with the specified keys
+        dict_a = {}
+        for key in train_data:
+            if key in keys_to_keep_and_slice:
+                dict_a[key] = train_data[key][order]  # Get the order sublist
+            elif key in keys_to_keep:
+                dict_a[key] = train_data[key]
+        
+        return dict_a
+    
             
     def training_step(self):
         
         # SR #
-        
-        # model
-        diffusion = Model.create_model(self.cfg)
-        logger.info('Initial Model Finished')
-        
+
         # Train
-        current_step = diffusion.begin_step
-        current_epoch = diffusion.begin_epoch
+        current_step = self.diffusion.begin_step
+        self.current_epoch = self.diffusion.begin_epoch # !!take a look!! for use the same parameter
         n_iter = self.cfg.sr.train.n_iter
-        
-        if self.cfg.path.resume_state:
+        iters_every_epoch = int(len(self.train_dataset) / self.batch_size_mica)+1
+        if self.cfg.sr.pretrained_model_path:
             logger.info('Resuming training from epoch: {}, iter: {}.'.format(
-                current_epoch, current_step))
+                self.current_epoch, current_step))
         
-        diffusion.set_new_noise_schedule(
-            self.cfg['model']['beta_schedule'][self.cfg['phase']], schedule_phase=self.cfg['phase'])
+        self.diffusion.set_new_noise_schedule(
+            self.cfg['sr']['model']['beta_schedule'][self.cfg['phase']], schedule_phase=self.cfg['phase'])
         
         if self.cfg['phase'] == 'train':
-            while current_step < n_iter:
-                current_epoch += 1
+            while current_step < n_iter + self.cfg.mica.train.max_steps: # !!take a look!! if train only SR -> set mica steps to be 0
+                self.current_epoch += 1
                 for _, train_data in tqdm(enumerate(self.train_iter), total=len(self.train_iter), desc="Processing training data"):
                     current_step += 1
                     
                     # SR # -------------------------------------------
-                    
-                    if current_step > n_iter:
-                        break
-                    diffusion.feed_data(train_data)
-                    diffusion.optimize_parameters()
-                    
-                    # DECA # ------------------------------------------- 1 step
-                    
-                    visuals = diffusion.get_current_visuals() 
-                    # sr_img = Metrics.tensor2img(visuals['SR'])  # uint8
-                    # hr_img = Metrics.tensor2img(visuals['HR'])  # uint8
-                    # lr_img = Metrics.tensor2img(visuals['LR'])  # uint8
-                    # fake_img = Metrics.tensor2img(visuals['INF'])  # uint8
+                    loss_sr = []
+                    for i in range(len(train_data['SR'])):
+                        train_data_sub = self.filter_and_slice_train_data(train_data, order = i)
+                        if current_step > n_iter + self.cfg.mica.train.max_steps:
+                            break
+                        self.diffusion.feed_data(train_data_sub)
+                        loss_sr.append(self.diffusion.optimize_parameters())
                     
                     
-                    
-                    # log
-                    if current_step % self.cfg.sr.train.print_freq == 0:
-                        logs = diffusion.get_current_log()
-                        message = '<epoch:{:3d}, iter:{:8,d}> '.format(
-                            current_epoch, current_step)
-                        for k, v in logs.items():
-                            message += '{:s}: {:.4e} '.format(k, v)
-                            self.tb_logger.add_scalar(k, v, current_step)
-                        logger.info(message)
-
-                        if self.wandb_logger:
-                            self.wandb_logger.log_metrics(logs)
-
-                    # validation
-                    if current_step % self.cfg.sr.train.val_freq == 0:
-                        avg_psnr = 0.0
-                        idx = 0
-                        result_path = '{}/{}'.format(self.cfg.path.results, current_epoch)
-                        os.makedirs(result_path, exist_ok=True)
-
-                        diffusion.set_new_noise_schedule(
-                            self.cfg.model.beta_schedule.val, schedule_phase='val')
-                        for _,  val_data in enumerate(self.val_iter):
-                            idx += 1
-                            diffusion.feed_data(val_data)
-                            diffusion.test(continous=False)
-                            visuals = diffusion.get_current_visuals()
-                            sr_img = Metrics.tensor2img(visuals['SR'])  # uint8
-                            hr_img = Metrics.tensor2img(visuals['HR'])  # uint8
-                            lr_img = Metrics.tensor2img(visuals['LR'])  # uint8
-                            fake_img = Metrics.tensor2img(visuals['INF'])  # uint8
-
-                            # generation
-                            Metrics.save_img(
-                                hr_img, '{}/{}_{}_hr.png'.format(result_path, current_step, idx))
-                            Metrics.save_img(
-                                sr_img, '{}/{}_{}_sr.png'.format(result_path, current_step, idx))
-                            Metrics.save_img(
-                                lr_img, '{}/{}_{}_lr.png'.format(result_path, current_step, idx))
-                            Metrics.save_img(
-                                fake_img, '{}/{}_{}_inf.png'.format(result_path, current_step, idx))
-                            self.tb_logger.add_image(
-                                'Iter_{}'.format(current_step),
-                                np.transpose(np.concatenate(
-                                    (fake_img, sr_img, hr_img), axis=1), [2, 0, 1]),
-                                idx)
-                            avg_psnr += Metrics.calculate_psnr(
-                                sr_img, hr_img)
+                        # log
+                        if current_step % self.cfg.sr.train.print_freq == 0:
+                            logs = self.diffusion.get_current_log()
+                            message = '<epoch:{:3d}, iter:{:8,d}, sub-iter:{:2,d}> '.format(
+                                self.current_epoch, current_step, i)
+                            for k, v in logs.items():
+                                message += '{:s}: {:.4e} '.format(k, v)
+                                self.tb_logger.add_scalar(k, v, current_step)
+                            logger.info(message)
 
                             if self.wandb_logger:
-                                self.wandb_logger.log_image(
-                                    f'validation_{idx}', 
-                                    np.concatenate((fake_img, sr_img, hr_img), axis=1)
-                                )
-                                
-                                
+                                self.wandb_logger.log_metrics(logs)
 
-                        avg_psnr = avg_psnr / idx
-                        # reset dataloader    
-                        self.val_iter = iter(self.val_dataloader)
-                        
-                        diffusion.set_new_noise_schedule(
-                            self.cfg.model.beta_schedule.train, schedule_phase='train')
-                        # log
-                        logger.info('# Validation # PSNR: {:.4e}'.format(avg_psnr))
-                        logger_val = logging.getLogger('val')  # validation logger
-                        logger_val.info('<epoch:{:3d}, iter:{:8,d}> psnr: {:.4e}'.format(
-                            current_epoch, current_step, avg_psnr))
-                        # tensorboard logger
-                        self.tb_logger.add_scalar('psnr', avg_psnr, current_step)
+                        # validation
+                        if current_step % self.cfg.sr.train.val_freq == 0:
+                            avg_psnr = 0.0
+                            idx = 0
+                            result_path = '{}/{}'.format(self.cfg.path.results, self.current_epoch)
+                            os.makedirs(result_path, exist_ok=True)
 
-                        if self.wandb_logger:
-                            self.wandb_logger.log_metrics({
-                                'validation/val_psnr': avg_psnr,
-                                'validation/val_step': val_step
-                            })
-                            val_step += 1
+                            self.diffusion.set_new_noise_schedule(
+                                self.cfg.sr.model.beta_schedule.val, schedule_phase='val')
+                            for _,  val_data in enumerate(self.val_iter):
+                                idx += 1
+                                self.diffusion.feed_data(val_data)
+                                self.diffusion.test(continous=False)
+                                visuals = self.diffusion.get_current_visuals()
+                                sr_img = Metrics.tensor2img(visuals['SR'])  # uint8
+                                hr_img = Metrics.tensor2img(visuals['HR'])  # uint8
+                                lr_img = Metrics.tensor2img(visuals['LR'])  # uint8
+                                fake_img = Metrics.tensor2img(visuals['INF'])  # uint8
 
-                    if current_step % self.cfg.sr.train.save_checkpoint_freq == 0:
-                        logger.info('Saving models and training states.')
-                        diffusion.save_network(current_epoch, current_step)
+                                # generation
+                                Metrics.save_img(
+                                    hr_img, '{}/{}_{}_hr.png'.format(result_path, current_step, idx))
+                                Metrics.save_img(
+                                    sr_img, '{}/{}_{}_sr.png'.format(result_path, current_step, idx))
+                                Metrics.save_img(
+                                    lr_img, '{}/{}_{}_lr.png'.format(result_path, current_step, idx))
+                                Metrics.save_img(
+                                    fake_img, '{}/{}_{}_inf.png'.format(result_path, current_step, idx))
+                                self.tb_logger.add_image(
+                                    'Iter_{}'.format(current_step),
+                                    np.transpose(np.concatenate(
+                                        (fake_img, sr_img, hr_img), axis=1), [2, 0, 1]),
+                                    idx)
+                                avg_psnr += Metrics.calculate_psnr(
+                                    sr_img, hr_img)
 
-                        if self.wandb_logger and opt['log_wandb_ckpt']:
-                            self.wandb_logger.log_checkpoint(current_epoch, current_step)
+                                if self.wandb_logger:
+                                    self.wandb_logger.log_image(
+                                        f'validation_{idx}', 
+                                        np.concatenate((fake_img, sr_img, hr_img), axis=1)
+                                    )
+                                    
+                                    
+
+                            avg_psnr = avg_psnr / idx
+                            # reset dataloader    
+                            self.val_iter = iter(self.val_dataloader)
+                            
+                            self.diffusion.set_new_noise_schedule(
+                                self.cfg.model.beta_schedule.train, schedule_phase='train')
+                            # log
+                            logger.info('# Validation # PSNR: {:.4e}'.format(avg_psnr))
+                            logger_val = logging.getLogger('val')  # validation logger
+                            logger_val.info('<epoch:{:3d}, iter:{:8,d}> psnr: {:.4e}'.format(
+                                self.current_epoch, current_step, avg_psnr))
+                            # tensorboard logger
+                            self.tb_logger.add_scalar('psnr', avg_psnr, current_step)
+
+                            if self.wandb_logger:
+                                self.wandb_logger.log_metrics({
+                                    'validation/val_psnr': avg_psnr,
+                                    'validation/val_step': val_step
+                                })
+                                val_step += 1
+
+                        if current_step % self.cfg.sr.train.save_checkpoint_freq == 0:
+                            logger.info('Saving models and training states.')
+                            self.diffusion.save_network(self.current_epoch, current_step)
+
+                            if self.wandb_logger and opt['log_wandb_ckpt']:
+                                self.wandb_logger.log_checkpoint(self.current_epoch, current_step)
                     
+                    # MICA # ------------------------------------------- 
+                    images_list = []
+                    for i in range(len(train_data['SR'])):
+                        for j in range(len(self.filter_and_slice_train_data(train_data, order = i)['SR'])):
+                            train_data_sub['SR'] = self.filter_and_slice_train_data(train_data, order = i)['SR'][j].unsqueeze(0)
+                            train_data_sub['HR'] = self.filter_and_slice_train_data(train_data, order = i)['HR'][j].unsqueeze(0)
+                            train_data_sub['Index'] = self.filter_and_slice_train_data(train_data, order = i)['Index'][j]
+                            self.diffusion.feed_data(train_data_sub)
+                            self.diffusion.test(continous=False)
+                            visuals = self.diffusion.get_current_visuals()
+                            
+                            ### test image ####
+                            if current_step % 100 == 1:
+                                sr_img = Metrics.tensor2img(visuals['SR'])
+                                os.makedirs(os.path.join(self.cfg.output_dir, 'test'), exist_ok=True)
+                                Metrics.save_img(sr_img, '{}/test/{}_{}_test_sr.png'.format(self.cfg.output_dir, i, j))
+                            ### test image ####
+                            
+                            sr_up_img = F.interpolate(visuals['SR'].unsqueeze(0), size=( 224, 224), mode='bilinear', align_corners=False).squeeze(0)
+                            images_list.append(sr_up_img)
+                    images_array = torch.stack(images_list).view(train_data['image'].shape)
                     
+                    # Use the output from the SR feed to MICA
+                    batch = self.filter_and_slice_train_data(train_data, 0, keys_to_keep_and_slice = {}, keys_to_keep = {'image', 'arcface', 'imagename', 'dataset', 'flame'})
+                    batch['image'] = images_array
+                    
+                    if self.global_step > self.cfg.mica.train.max_steps:
+                        break
+                    
+                    visualizeTraining = self.global_step % self.cfg.mica.train.vis_steps == 0
+                    
+                    self.opt.zero_grad()
+                    losses, opdict = self.training_MICA(batch)
+
+                    loss_mica = losses['all_loss']
+                    
+                    loss_mica = loss_mica.to(self.device[0])
+                    loss_sr = [loss.to(self.device[0]) for loss in loss_sr]
+                    all_loss = loss_mica + torch.stack(loss_sr)
+                    gradient = torch.ones_like(all_loss)
+                    all_loss.backward(gradient)
+                    self.opt.step()
+                    self.diffusion.optG.step()
+                    self.global_step += 1
+
+                    if self.global_step % self.cfg.mica.train.log_steps == 0 and self.device[0] == 0:
+                        loss_info = f"\n" \
+                                    f"  Epoch: {self.current_epoch}\n" \
+                                    f"  Step: {self.global_step}\n" \
+                                    f"  Iter: {current_step}/{iters_every_epoch}\n" \
+                                    f"  LR: {self.opt.param_groups[0]['lr']}\n" \
+                                    f"  Time: {datetime.now().strftime('%Y-%m-%d-%H:%M:%S')}\n"
+                        for k, v in losses.items():
+                            loss_info = loss_info + f'  {k}: {v:.4f}\n'
+                            if self.cfg.mica.train.write_summary:
+                                self.tb_logger.add_scalar('train_loss/' + k, v, global_step=self.global_step)
+                        logger.info(loss_info)
+
+                    if visualizeTraining and self.device[0] == 0:
+                        visdict = {
+                            'input_images': opdict['images'],
+                        }
+                        # add images to tensorboard
+                        for k, v in visdict.items():
+                            self.tb_logger.add_images(k, np.clip(v.detach().cpu(), 0.0, 1.0), self.global_step)
+
+                        pred_canonical_shape_vertices = torch.empty(0, 3, 512, 512).cuda()
+                        flame_verts_shape = torch.empty(0, 3, 512, 512).cuda()
+                        deca_images = torch.empty(0, 3, 512, 512).cuda()
+                        input_images = torch.empty(0, 3, 224, 224).cuda()
+                        L = opdict['pred_canonical_shape_vertices'].shape[0]
+                        S = 4 if L > 4 else L                    
+                        for n in np.random.choice(range(L), size=S, replace=False):
+                            
+                            rendering = self.nfc.render.render_mesh(opdict['pred_canonical_shape_vertices'][n:n + 1, ...])
+                            pred_canonical_shape_vertices = torch.cat([pred_canonical_shape_vertices, rendering])
+                            rendering = self.nfc.render.render_mesh(opdict['flame_verts_shape'][n:n + 1, ...])
+                            flame_verts_shape = torch.cat([flame_verts_shape, rendering])
+                            input_images = torch.cat([input_images, opdict['images'][n:n + 1, ...]])
+                            if 'deca' in opdict:
+                                deca = self.nfc.render.render_mesh(opdict['deca'][n:n + 1, ...])
+                                deca_images = torch.cat([deca_images, deca])
+                            
+
+
+                        visdict = {}
+
+                        if 'deca' in opdict:
+                            visdict['deca'] = deca_images
+
+                        visdict["pred_canonical_shape_vertices"] = pred_canonical_shape_vertices
+                        visdict["flame_verts_shape"] = flame_verts_shape
+                        visdict["images"] = input_images
+
+                        savepath = os.path.join(self.cfg.output_dir, 'train_images_mica/train_' + str(self.current_epoch) + '.jpg')
+                        util.visualize_grid(visdict, savepath, size=512)
+
+                    if self.global_step % self.cfg.mica.train.val_steps == 0:
+                        self.validation_MICA()
+
+                    if self.global_step % self.cfg.mica.train.lr_update_step == 0:
+                        self.scheduler.step()
+
+                    if self.global_step % self.cfg.mica.train.eval_steps == 0:
+                        self.evaluate_MICA()
+
+                    if self.global_step % self.cfg.mica.train.checkpoint_steps == 0:
+                        self.save_checkpoint(os.path.join(self.cfg.output_dir, 'model_mica' + '.tar'))
+
+                    if self.global_step % self.cfg.mica.train.checkpoint_epochs_steps == 0:
+                        self.save_checkpoint(os.path.join(self.cfg.path.checkpoint_mica, 'model_' + str(self.global_step) + '.tar'))
 
                 if self.wandb_logger:
-                    self.wandb_logger.log_metrics({'epoch': current_epoch-1})
+                    self.wandb_logger.log_metrics({'epoch': self.current_epoch-1})
                 # reset dataloader    
                 self.train_iter = iter(self.train_dataloader)
+
+             
             # save model
+            self.save_checkpoint(os.path.join(self.cfg.output_dir, 'model_mica' + '.tar'))  
             logger.info('End of training.')
         else:
             logger.info('Begin Model Evaluation.')
@@ -217,9 +462,9 @@ class Trainer(object):
             os.makedirs(result_path, exist_ok=True)
             for _,  val_data in enumerate(self.val_iter):
                 idx += 1
-                diffusion.feed_data(val_data)
-                diffusion.test(continous=True)
-                visuals = diffusion.get_current_visuals()
+                self.diffusion.feed_data(val_data)
+                self.diffusion.test(continous=True)
+                visuals = self.diffusion.get_current_visuals()
 
                 hr_img = Metrics.tensor2img(visuals['HR'])  # uint8
                 lr_img = Metrics.tensor2img(visuals['LR'])  # uint8
@@ -266,7 +511,7 @@ class Trainer(object):
             logger.info('# Validation # SSIM: {:.4e}'.format(avg_ssim))
             logger_val = logging.getLogger('val')  # validation logger
             logger_val.info('<epoch:{:3d}, iter:{:8,d}> psnr: {:.4e}, ssim：{:.4e}'.format(
-                current_epoch, current_step, avg_psnr, avg_ssim))
+                self.current_epoch, current_step, avg_psnr, avg_ssim))
 
             if self.wandb_logger:
                 if self.cfg['log_eval']:
@@ -276,362 +521,82 @@ class Trainer(object):
                     'SSIM': float(avg_ssim)
                 })
             
-        # DECA #
+        # MICA # !! add it!!
     
-    def training_deca(self, batch, batch_nb, training_type='coarse'):
-        self.deca.train()
-        if self.train_detail:
-            self.deca.E_flame.eval()
-            
-        # [B, K, 3, size, size] ==> [BxK, 3, size, size]
-        images = batch['image'].to(self.device); images = images.view(-1, images.shape[-3], images.shape[-2], images.shape[-1])  #([B*K, 3, 224, 224])
-        lmk = batch['landmark'].to(self.device); lmk = lmk.view(-1, lmk.shape[-2], lmk.shape[-1]) # ([B*K, 68, 3])
-        masks = batch['mask'].to(self.device); masks = masks.view(-1, images.shape[-2], images.shape[-1]) # ([B*K, 224, 224])
+    def training_MICA(self, batch):
+        self.nfc.train() # loop here!!
 
-        
-        #-- encoder
-        codedict = self.deca.encode(images, use_detail=self.train_detail)
-        
-        # add by patipol
-        if self.deca_pretrain:
-            codedict_pretrain = self.deca_pretrain.encode(images, use_detail=self.train_detail)
-        # add by patipol
-        
-        
-        ### shape constraints for coarse model
-        ### detail consistency for detail model
-        # import ipdb; ipdb.set_trace()
-        if self.cfg.loss.shape_consistency or self.cfg.loss.detail_consistency:
-            '''
-            make sure s0, s1 is something to make shape close
-            the difference from ||so - s1|| is 
-            the later encourage s0, s1 is cloase in l2 space, but not really ensure shape will be close
-            '''
-            new_order = np.array([np.random.permutation(self.K) + i*self.K for i in range(self.batch_size)])
-            new_order = new_order.flatten()
-            shapecode = codedict['shape']
-            if self.train_detail:
-                detailcode = codedict['detail']
-                detailcode_new = detailcode[new_order]
-                codedict['detail'] = torch.cat([detailcode, detailcode_new], dim=0)
-                codedict['shape'] = torch.cat([shapecode, shapecode], dim=0)
-                
-                # add by patipol
-                if self.deca_pretrain:
-                    detailcode_p = codedict_pretrain['detail']
-                    detailcode_new_p = detailcode_p[new_order]
-                    codedict_pretrain['detail'] = torch.cat([detailcode_p, detailcode_new_p], dim=0)
-                    
-                    for key in ['tex', 'exp', 'pose', 'cam', 'light', 'images']:
-                        code = codedict_pretrain[key]
-                        codedict_pretrain[key] = torch.cat([code, code], dim=0)
-                # add by patipol
-                
-            else:
-                shapecode_new = shapecode[new_order]
-                codedict['shape'] = torch.cat([shapecode, shapecode_new], dim=0)
-            for key in ['tex', 'exp', 'pose', 'cam', 'light', 'images']:
-                code = codedict[key]
-                codedict[key] = torch.cat([code, code], dim=0)
-            ## append gt
-            images = torch.cat([images, images], dim=0)# images = images.view(-1, images.shape[-3], images.shape[-2], images.shape[-1]) 
-            lmk = torch.cat([lmk, lmk], dim=0) #lmk = lmk.view(-1, lmk.shape[-2], lmk.shape[-1])
-            masks = torch.cat([masks, masks], dim=0)
+        images = batch['image'].to(self.device[0]) # !!take a look!! for multi gpu
+        images = images.view(-1, images.shape[-3], images.shape[-2], images.shape[-1])
+        flame = batch['flame']
+        arcface = batch['arcface']
+        arcface = arcface.view(-1, arcface.shape[-3], arcface.shape[-2], arcface.shape[-1]).to(self.device[0]) # !!take a look!! for multi gpu
 
-        batch_size = images.shape[0]
+        inputs = {
+            'images': images,
+            'dataset': batch['dataset'][0]
+        }
+        encoder_output = self.nfc.encode(images, arcface)
+        encoder_output['flame'] = flame
+        decoder_output = self.nfc.decode(encoder_output, self.current_epoch)
+        losses = self.nfc.compute_losses(inputs, encoder_output, decoder_output)
 
-        ###--------------- training coarse model
-        if not self.train_detail:
-            #-- decoder
-            rendering = True if self.cfg.loss.photo>0 else False
-            opdict = self.deca.decode(codedict, rendering = rendering, vis_lmk=False, return_vis=False, use_detail=False, step_global = self.global_step, step_procress = 'train')
-            opdict['images'] = images
-            opdict['lmk'] = lmk
-
-            if self.cfg.loss.photo > 0.:
-                #------ rendering
-                # mask
-                mask_face_eye = F.grid_sample(self.deca.uv_face_eye_mask.expand(batch_size,-1,-1,-1), opdict['grid'].detach(), align_corners=False) 
-                # images
-                predicted_images = opdict['rendered_images']*mask_face_eye*opdict['alpha_images']
-                opdict['predicted_images'] = predicted_images
-
-            #### ----------------------- Losses
-            losses = {}
-            
-            ############################# base shape
-            predicted_landmarks = opdict['landmarks2d']
-            if self.cfg.loss.useWlmk:
-                losses['landmark'] = lossfunc.weighted_landmark_loss(predicted_landmarks, lmk)*self.cfg.loss.lmk
-            else:    
-                losses['landmark'] = lossfunc.landmark_loss(predicted_landmarks, lmk)*self.cfg.loss.lmk
-            if self.cfg.loss.eyed > 0.:
-                losses['eye_distance'] = lossfunc.eyed_loss(predicted_landmarks, lmk)*self.cfg.loss.eyed
-            if self.cfg.loss.lipd > 0.:
-                losses['lip_distance'] = lossfunc.lipd_loss(predicted_landmarks, lmk)*self.cfg.loss.lipd
-            
-            if self.cfg.loss.photo > 0.:
-                if self.cfg.loss.useSeg:
-                    masks = masks[:,None,:,:]
-                else:
-                    masks = mask_face_eye*opdict['alpha_images']
-                losses['photometric_texture'] = (masks*(predicted_images - images).abs()).mean()*self.cfg.loss.photo
-
-            if self.cfg.loss.id > 0.:
-                shading_images = self.deca.render.add_SHlight(opdict['normal_images'], codedict['light'].detach())
-                albedo_images = F.grid_sample(opdict['albedo'].detach(), opdict['grid'], align_corners=False)
-                overlay = albedo_images*shading_images*mask_face_eye + images*(1-mask_face_eye)
-                losses['identity'] = self.id_loss(overlay, images) * self.cfg.loss.id
-            
-            losses['shape_reg'] = (torch.sum(codedict['shape']**2)/2)*self.cfg.loss.reg_shape
-            losses['expression_reg'] = (torch.sum(codedict['exp']**2)/2)*self.cfg.loss.reg_exp
-            losses['tex_reg'] = (torch.sum(codedict['tex']**2)/2)*self.cfg.loss.reg_tex
-            losses['light_reg'] = ((torch.mean(codedict['light'], dim=2)[:,:,None] - codedict['light'])**2).mean()*self.cfg.loss.reg_light
-            if self.cfg.model.jaw_type == 'euler':
-                # import ipdb; ipdb.set_trace()
-                # reg on jaw pose
-                losses['reg_jawpose_roll'] = (torch.sum(codedict['euler_jaw_pose'][:,-1]**2)/2)*100.
-                losses['reg_jawpose_close'] = (torch.sum(F.relu(-codedict['euler_jaw_pose'][:,0])**2)/2)*10.
-            
-            if self.global_step % self.cfg.train.vis_steps == 0:
-                output_path = os.path.join(self.cfg.output_dir, self.cfg.train.vis_dir, f'{self.global_step:08}')
-                os.makedirs(output_path, exist_ok=True)
-                self.grid_save(images, output_path, 'images')
-                try:
-                    self.grid_save(predicted_images, output_path, 'predicted_images')
-                except:
-                    pass
-        
-        ###--------------- training detail model
-        else:
-            #-- decoder -> code like in decoder
-            shapecode = codedict['shape']
-            expcode = codedict['exp']
-            posecode = codedict['pose']
-            texcode = codedict['tex']
-            lightcode = codedict['light']
-            detailcode = codedict['detail']
-            cam = codedict['cam']
-
-            # FLAME - world space
-            verts, landmarks2d, landmarks3d = self.deca.flame(shape_params=shapecode, expression_params=expcode, pose_params=posecode)
-            landmarks2d = util.batch_orth_proj(landmarks2d, codedict['cam'])[:,:,:2]; landmarks2d[:,:,1:] = -landmarks2d[:,:,1:] #; landmarks2d = landmarks2d*self.image_size/2 + self.image_size/2
-            # world to camera
-            trans_verts = util.batch_orth_proj(verts, cam)
-            predicted_landmarks = util.batch_orth_proj(landmarks2d, cam)[:,:,:2]
-            # camera to image space
-            trans_verts[:,:,1:] = -trans_verts[:,:,1:]
-            predicted_landmarks[:,:,1:] = - predicted_landmarks[:,:,1:]
-            
-            albedo = self.deca.flametex(texcode) 
-
-            #------ rendering
-            ops = self.deca.render(verts, trans_verts, albedo, lightcode)
-            # mask
-            mask_face_eye = F.grid_sample(self.deca.uv_face_eye_mask.expand(batch_size,-1,-1,-1), ops['grid'].detach(), align_corners=False)
-            # images
-            predicted_images = ops['images']*mask_face_eye*ops['alpha_images']
-
-            masks = masks[:,None,:,:]
-
-            uv_z = self.deca.D_detail(torch.cat([posecode[:,3:], expcode, detailcode], dim=1))  
-            
-            # add by patipol
-            if self.deca_pretrain:
-                detailcode_p = codedict_pretrain['detail']
-                expcode_p = codedict_pretrain['exp']
-                posecode_p = codedict_pretrain['pose']
-                
-                uv_z_1 = self.deca_pretrain.D_detail(torch.cat([posecode_p[:,3:], expcode_p, detailcode_p], dim=1))  
-            
-            # add by patipol
-            
-            # render detail
-            uv_detail_normals = self.deca.displacement2normal(uv_z, verts, ops['normals']) # point
-            uv_shading = self.deca.render.add_SHlight(uv_detail_normals, lightcode.detach())
-            uv_texture = albedo.detach()*uv_shading
-            
-            predicted_detail_images = F.grid_sample(uv_texture, ops['grid'].detach(), align_corners=False)
-            
-            # add by patipol
-            if self.global_step % self.cfg.train.vis_steps == 0:
-                output_path = os.path.join(self.cfg.output_dir, self.cfg.train.vis_dir, f'{self.global_step:08}')
-                os.makedirs(output_path, exist_ok=True)
-                name = 'ops'
-                savepath = os.path.join(output_path, name)
-                
-                self.save_img(ops['images'], savepath + '_image' )
-                self.save_img(ops['normal_images'], savepath + '_normal' )
-                
-                faces = self.deca.flame.faces_tensor.cpu().numpy()
-                # save mesh
-                for k in range(ops['images'].shape[0]):
-                    util.write_obj(savepath + f'_obj_image{k + 1}.obj', vertices=verts[k], faces=faces)
-            
-            # add by patipol
-
-            #--- extract texture
-            uv_pverts = self.deca.render.world2uv(trans_verts).detach()
-            uv_gt = F.grid_sample(torch.cat([images, masks], dim=1), uv_pverts.permute(0,2,3,1)[:,:,:,:2], mode='bilinear', align_corners=False)
-            uv_texture_gt = uv_gt[:,:3,:,:].detach(); uv_mask_gt = uv_gt[:,3:,:,:].detach()
-            # self-occlusion
-            normals = util.vertex_normals(trans_verts, self.deca.render.faces.expand(batch_size, -1, -1))
-            uv_pnorm = self.deca.render.world2uv(normals)
-            uv_mask = (uv_pnorm[:,[-1],:,:] < -0.05).float().detach()
-            ## combine masks
-            uv_vis_mask = uv_mask_gt*uv_mask*self.deca.uv_face_eye_mask
-            
-            
-            
-            #### ----------------------- Losses
-            losses = {}
-            ############################### details
-            # if self.cfg.loss.old_mrf: 
-            #     if self.cfg.loss.old_mrf_face_mask:
-            #         masks = masks*mask_face_eye*ops['alpha_images']
-            #     losses['photo_detail'] = (masks*(predicted_detailed_image - images).abs()).mean()*100
-            #     losses['photo_detail_mrf'] = self.mrf_loss(masks*predicted_detailed_image, masks*images)*0.1
-            # else:
-            pi = 0
-            new_size = 256
-            uv_texture_patch = F.interpolate(uv_texture[:, :, self.face_attr_mask[pi][2]:self.face_attr_mask[pi][3], self.face_attr_mask[pi][0]:self.face_attr_mask[pi][1]], [new_size, new_size], mode='bilinear')
-            uv_texture_gt_patch = F.interpolate(uv_texture_gt[:, :, self.face_attr_mask[pi][2]:self.face_attr_mask[pi][3], self.face_attr_mask[pi][0]:self.face_attr_mask[pi][1]], [new_size, new_size], mode='bilinear')
-            uv_vis_mask_patch = F.interpolate(uv_vis_mask[:, :, self.face_attr_mask[pi][2]:self.face_attr_mask[pi][3], self.face_attr_mask[pi][0]:self.face_attr_mask[pi][1]], [new_size, new_size], mode='bilinear')
-            
-            # add by patipol
-            
-            if self.global_step % self.cfg.train.vis_steps == 0:
-                # for i in range(len(uv_pverts)):
-                #     savepath = os.path.join(output_path, 'uv_pverts')
-                #     temp =  (uv_pverts[i].cpu().numpy().transpose(1, 2, 0)* 255).astype(np.uint8)
-                #     transforms.ToPILImage()(temp).save(savepath + '_' + str(i) + '.png')
-                #     savepath = os.path.join(output_path, 'uv_texture_gt')
-                #     temp =  (uv_texture_gt[i].cpu().numpy().transpose(1, 2, 0)* 255).astype(np.uint8)
-                #     transforms.ToPILImage()(temp).save(savepath + '_' + str(i) + '.png')
-                #     savepath = os.path.join(output_path, 'uv_pnorm')
-                #     temp =  (uv_pnorm[i].cpu().numpy().transpose(1, 2, 0)* 255).astype(np.uint8)
-                #     transforms.ToPILImage()(temp).save(savepath + '_' + str(i) + '.png')
-                #     savepath = os.path.join(output_path, 'uv_mask')
-                #     temp =  (uv_mask[i].cpu().numpy().transpose(1, 2, 0)* 255).astype(np.uint8)
-                #     transforms.ToPILImage()(temp).save(savepath + '_' + str(i) + '.png')
-                #     savepath = os.path.join(output_path, 'uv_vis_mask')
-                #     temp =  (uv_vis_mask[i].cpu().numpy().transpose(1, 2, 0)* 255).astype(np.uint8)
-                #     transforms.ToPILImage()(temp).save(savepath + '_' + str(i) + '.png')
-                    
-                #     savepath = os.path.join(output_path, 'uv_texture_patch')
-                #     temp =  (uv_texture_patch[i].cpu().detach().numpy().transpose(1, 2, 0)* 255).astype(np.uint8)
-                #     transforms.ToPILImage()(temp).save(savepath + '_' + str(i) + '.png')
-                #     savepath = os.path.join(output_path, 'uv_texture_gt_patch')
-                #     temp =  (uv_texture_gt_patch[i].cpu().detach().numpy().transpose(1, 2, 0)* 255).astype(np.uint8)
-                #     transforms.ToPILImage()(temp).save(savepath + '_' + str(i) + '.png')
-                #     savepath = os.path.join(output_path, 'uv_vis_mask_patch')
-                #     temp =  (uv_vis_mask_patch[i].cpu().detach().numpy().transpose(1, 2, 0)* 255).astype(np.uint8)
-                #     transforms.ToPILImage()(temp).save(savepath + '_' + str(i) + '.png')
-                    
-                #     savepath = os.path.join(output_path, 'albedo')
-                #     temp =  (albedo[i].cpu().detach().numpy().transpose(1, 2, 0)* 255).astype(np.uint8)
-                #     transforms.ToPILImage()(temp).save(savepath + '_' + str(i) + '.png')
-                #     savepath = os.path.join(output_path, 'mask_face_eye')
-                #     temp =  (mask_face_eye[i].cpu().detach().numpy().transpose(1, 2, 0)* 255).astype(np.uint8)
-                #     transforms.ToPILImage()(temp).save(savepath + '_' + str(i) + '.png')
-                #     savepath = os.path.join(output_path, 'predicted_images')
-                #     temp =  (predicted_images[i].cpu().detach().numpy().transpose(1, 2, 0)* 255).astype(np.uint8)
-                #     transforms.ToPILImage()(temp).save(savepath + '_' + str(i) + '.png')
-                #     savepath = os.path.join(output_path, 'masks')
-                #     temp =  (masks[i].cpu().detach().numpy().transpose(1, 2, 0)* 255).astype(np.uint8)
-                #     transforms.ToPILImage()(temp).save(savepath + '_' + str(i) + '.png')
-                #     savepath = os.path.join(output_path, 'uv_z')
-                #     temp =  (uv_z[i].cpu().detach().numpy().transpose(1, 2, 0)* 255).astype(np.uint8)
-                #     transforms.ToPILImage()(temp).save(savepath + '_' + str(i) + '.png')
-                #     savepath = os.path.join(output_path, 'uv_detail_normals')
-                #     temp =  (uv_detail_normals[i].cpu().detach().numpy().transpose(1, 2, 0)* 255).astype(np.uint8)
-                #     transforms.ToPILImage()(temp).save(savepath + '_' + str(i) + '.png')
-                    
-                #     savepath = os.path.join(output_path, 'uv_shading')
-                #     temp =  (uv_shading[i].cpu().detach().numpy().transpose(1, 2, 0)* 255).astype(np.uint8)
-                #     transforms.ToPILImage()(temp).save(savepath + '_' + str(i) + '.png')
-                #     savepath = os.path.join(output_path, 'uv_texture')
-                #     temp =  (uv_texture[i].cpu().detach().numpy().transpose(1, 2, 0)* 255).astype(np.uint8)
-                #     transforms.ToPILImage()(temp).save(savepath + '_' + str(i) + '.png')
-                #     savepath = os.path.join(output_path, 'predicted_detail_images')
-                #     temp =  (predicted_detail_images[i].cpu().detach().numpy().transpose(1, 2, 0)* 255).astype(np.uint8)
-                #     transforms.ToPILImage()(temp).save(savepath + '_' + str(i) + '.png')
-                
-                self.grid_save(uv_pverts, output_path, 'uv_pverts')
-                self.grid_save(uv_texture_gt, output_path, 'uv_texture_gt')
-                self.grid_save(uv_pnorm, output_path, 'uv_pnorm')
-                self.grid_save(uv_mask, output_path, 'uv_mask')
-                self.grid_save(uv_vis_mask, output_path, 'uv_vis_mask')
-                self.grid_save(uv_texture_patch, output_path, 'uv_texture_patch')
-                self.grid_save(uv_texture_gt_patch, output_path, 'uv_texture_gt_patch')
-                self.grid_save(uv_vis_mask_patch, output_path, 'uv_vis_mask_patch')
-                self.grid_save(albedo, output_path, 'albedo')
-                self.grid_save(mask_face_eye, output_path, 'mask_face_eye')
-                self.grid_save(predicted_images, output_path, 'predicted_images')
-                self.grid_save(masks, output_path, 'masks')
-                self.grid_save(uv_z, output_path, 'uv_z')
-                self.grid_save(uv_detail_normals, output_path, 'uv_detail_normals')
-                self.grid_save(uv_shading, output_path, 'uv_shading')
-                self.grid_save(uv_texture, output_path, 'uv_texture')
-                self.grid_save(predicted_detail_images, output_path, 'predicted_detail_images')
-                
-                if self.deca_pretrain:
-                    self.grid_save(uv_z_1, output_path, 'uv_z_1')
-            
-            if self.deca_pretrain:
-                losses['uv_z'] = torch.mean((uv_z - uv_z_1).abs())*0.5
-                    
-            # add by patipol
-            
-            losses['photo_detail'] = (uv_texture_patch*uv_vis_mask_patch - uv_texture_gt_patch*uv_vis_mask_patch).abs().mean()*self.cfg.loss.photo_D
-            losses['photo_detail_mrf'] = self.mrf_loss(uv_texture_patch*uv_vis_mask_patch, uv_texture_gt_patch*uv_vis_mask_patch)*self.cfg.loss.photo_D*self.cfg.loss.mrf
-            
-            losses['z_reg'] = torch.mean(uv_z.abs())*self.cfg.loss.reg_z
-            losses['z_diff'] = lossfunc.shading_smooth_loss(uv_shading)*self.cfg.loss.reg_diff
-            if self.cfg.loss.reg_sym > 0.:
-                nonvis_mask = (1 - util.binary_erosion(uv_vis_mask))
-                losses['z_sym'] = (nonvis_mask*(uv_z - torch.flip(uv_z, [-1]).detach()).abs()).sum()*self.cfg.loss.reg_sym
-            opdict = {
-                'verts': verts,
-                'trans_verts': trans_verts,
-                'landmarks2d': landmarks2d,
-                'predicted_images': predicted_images,
-                'predicted_detail_images': predicted_detail_images,
-                'images': images,
-                'lmk': lmk
-            }
-            
-        #########################################################
         all_loss = 0.
         losses_key = losses.keys()
+
         for key in losses_key:
-            all_loss = all_loss + losses[key].to(self.device)
+            all_loss = all_loss + losses[key]
+
         losses['all_loss'] = all_loss
+
+        opdict = \
+            {
+                'images': images,
+                'flame_verts_shape': decoder_output['flame_verts_shape'],
+                'pred_canonical_shape_vertices': decoder_output['pred_canonical_shape_vertices'],
+            }
+
+        if 'deca' in decoder_output:
+            opdict['deca'] = decoder_output['deca']
+
         return losses, opdict
     
-    def validation_deca(self):
-        pass
+    def validation_MICA(self):
+        self.validator.run()
     
-    def evaluate_deca(self):
+    def evaluate_MICA(self):
         # NOW Benchmark
         pass
     
     def prepare_data(self):
-        self.train_dataset = build_datasets.build_train(self.cfg.datasets)
-        logger.info("Training data number: ", len(self.train_dataset))
-        self.val_dataset = build_datasets.build_val(self.cfg.datasets)
-        logger.info("Valuating data number: ", len(self.val_dataset))
+        generator = torch.Generator()
+        generator.manual_seed(int(self.cfg.gpu_ids[0]))
 
-        self.train_dataloader = DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=True,
-                            num_workers=self.cfg.datasets.train.num_workers,
-                            pin_memory=False,
-                            drop_last=True)
+        self.train_dataset, total_images = datasets.build_train(self.cfg, self.device)
+        self.train_dataloader = DataLoader(
+            self.train_dataset, batch_size=self.batch_size_mica,
+            num_workers=self.cfg.mica.datasets.num_workers,
+            shuffle=True,
+            pin_memory=True,
+            drop_last=False,
+            worker_init_fn=seed_worker,
+            generator=generator)
+
         self.train_iter = iter(self.train_dataloader)
-        self.val_dataloader = DataLoader(self.val_dataset, batch_size=1, shuffle=False,
-                            num_workers=8,
-                            pin_memory=False,
-                            drop_last=False)
-        self.val_iter = iter(self.val_dataloader)
+        # logger.info(f'[TRAINER] Training dataset is ready with {len(self.train_dataset)} actors and {total_images} images.')
+        
+        # sr - val
+        for phase, dataset_opt in self.cfg['sr']['datasets'].items(): # make a real val for sr in one system !!take a look!!
+            # if phase == 'train' and self.cfg.phase != 'val':
+            #     train_set = datasets.create_dataset(dataset_opt, phase)
+            #     self.train_dataloader = datasets.create_dataloader(
+            #         train_set, dataset_opt, phase)
+            #     self.train_iter = iter(self.train_dataloader)
+            if phase == 'val': 
+                val_set = datasets.create_dataset(dataset_opt, phase)
+                self.val_dataloader = datasets.create_dataloader(
+                    val_set, dataset_opt, phase)
+                self.val_iter = iter(self.val_dataloader)
         
         logger.info('Initial Dataset Finished')
     

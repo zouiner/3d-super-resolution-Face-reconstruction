@@ -8,10 +8,11 @@ import os
 
 cfg = CN()
 
-abs_deca_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
-cfg.deca_dir = abs_deca_dir
+abs_sr3d_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+cfg.sr3d_dir = abs_sr3d_dir
 
-cfg.gpu_ids = None
+cfg.device = 'cuda'
+cfg.device_id = [0,1]
 
 cfg.name = ""
 cfg.phase = ""
@@ -20,94 +21,120 @@ cfg.enable_wandb = None
 cfg.log_wandb_ckpt = None
 cfg.log_eval = None
 
-
-cfg.pretrained_modelpath = os.path.join(cfg.deca_dir, 'data', 'deca_model.tar')
 cfg.output_dir = "/shared/storage/cs/staffstore/ps1510/Tutorial/3d-super-resolution-Face-reconstruction/Output"
 
 # ---------------------------------------------------------------------------- #
 # Options for path
 # ---------------------------------------------------------------------------- #
 cfg.path = CN()
-cfg.path.pretrained_modelpath = ""
 cfg.path.log = "logs"
 cfg.path.tb_logger = "tb_logger"
 cfg.path.results = "results"
-cfg.path.checkpoint = "checkpoint"
-cfg.path.resume_state = None
+cfg.path.checkpoint_sr = "checkpoint_sr"
+cfg.path.checkpoint_mica = "checkpoint_mica"
+
+# SR
+cfg.sr = CN()
+cfg.sr.pretrained_model_path = None
+# MICA
+cfg.mica = CN()
+cfg.mica.pretrained_model_path = os.path.join(cfg.sr3d_dir, 'data/pretrained', 'mica.tar')
+
 
 # ---------------------------------------------------------------------------- #
 # Options for Dataset
 # ---------------------------------------------------------------------------- #
 
-cfg.datasets = CN()
+# SR
+cfg.sr.datasets = CN()
 # Train
-cfg.datasets.train = CN()
-cfg.datasets.train.name = "mocktest"
-cfg.datasets.train.mode = "HR"
-cfg.datasets.train.dataroot = "contents/vgg_face2_train_32_128"
-cfg.datasets.train.datatype = "img"
-cfg.datasets.train.l_resolution = 32
-cfg.datasets.train.r_resolution = 128
-cfg.datasets.train.batch_size = 4
-cfg.datasets.train.num_workers = 8
-cfg.datasets.train.use_shuffle = True
-cfg.datasets.train.data_len = 10000
+cfg.sr.datasets.train = CN()
+cfg.sr.datasets.train.name = "mocktest"
+cfg.sr.datasets.train.mode = "HR"
+cfg.sr.datasets.train.dataroot = "contents/vgg_face2_train_32_128"
+cfg.sr.datasets.train.datatype = "img"
+cfg.sr.datasets.train.l_resolution = 32
+cfg.sr.datasets.train.r_resolution = 128
+cfg.sr.datasets.train.batch_size = 4
+cfg.sr.datasets.train.num_workers = 8
+cfg.sr.datasets.train.use_shuffle = True
+cfg.sr.datasets.train.data_len = 10000
+cfg.sr.datasets.K = 4 # temp from mica
 # Val
-cfg.datasets.val = CN()
-cfg.datasets.val.name = "mocktest"
-cfg.datasets.val.mode = "LRHR"
-cfg.datasets.val.dataroot = "contents/vgg_face2_eval_32_128"
-cfg.datasets.val.datatype = "img"
-cfg.datasets.val.l_resolution = 32
-cfg.datasets.val.r_resolution = 128
-cfg.datasets.val.data_len = 3
+cfg.sr.datasets.val = CN()
+cfg.sr.datasets.val.name = "mocktest"
+cfg.sr.datasets.val.mode = "LRHR"
+cfg.sr.datasets.val.dataroot = "contents/vgg_face2_eval_32_128"
+cfg.sr.datasets.val.datatype = "img"
+cfg.sr.datasets.val.l_resolution = 32
+cfg.sr.datasets.val.r_resolution = 128
+cfg.sr.datasets.val.data_len = 3
 
-# TEMP for DECA
-cfg.datasets.K = 0 # use in deca 
-cfg.datasets.isSingle = False
-cfg.datasets.num_workers = 2
-cfg.datasets.image_size = 224
-cfg.datasets.scale_min = 1.4
-cfg.datasets.scale_max = 1.8
-cfg.datasets.trans_scale = 0.
+# MICA
+cfg.mica.datasets = CN()
+cfg.mica.datasets.training_data = ['LYHM']
+cfg.mica.datasets.eval_data = ['FLORENCE']
+cfg.mica.datasets.datatype = "img"
+cfg.mica.datasets.batch_size = 2
+cfg.mica.datasets.K = 4
+cfg.mica.datasets.n_train = 100000
+cfg.mica.datasets.num_workers = 4
+cfg.mica.datasets.root = '/datasets/arcface/'
+cfg.mica.datasets.dataset_path = 'contents'
 
 # ---------------------------------------------------------------------------- #
 # Options for model
 # ---------------------------------------------------------------------------- #
 
 # SR
-cfg.model = CN()
-cfg.model.which_model_G = "sr3"
-cfg.model.finetune_norm = False
+cfg.sr.model = CN()
+cfg.sr.model.which_model_G = "sr3"
+cfg.sr.model.finetune_norm = False
 
-cfg.model.unet = CN()
-cfg.model.unet.in_channel = 6
-cfg.model.unet.out_channel = 3
-cfg.model.unet.inner_channel = 64
-cfg.model.unet.channel_multiplier = [1, 2, 4, 8, 8]
-cfg.model.unet.attn_res = [16]
-cfg.model.unet.res_blocks = 2
-cfg.model.unet.dropout = 0.2
+cfg.sr.model.unet = CN()
+cfg.sr.model.unet.in_channel = 6
+cfg.sr.model.unet.out_channel = 3
+cfg.sr.model.unet.inner_channel = 64
+cfg.sr.model.unet.channel_multiplier = [1, 2, 4, 8, 8]
+cfg.sr.model.unet.attn_res = [16]
+cfg.sr.model.unet.res_blocks = 2
+cfg.sr.model.unet.dropout = 0.2
 
-cfg.model.beta_schedule = CN()
-cfg.model.beta_schedule.train = CN()
-cfg.model.beta_schedule.train.schedule = "linear"
-cfg.model.beta_schedule.train.n_timestep = 2000
-cfg.model.beta_schedule.train.linear_start = 0.000001
-cfg.model.beta_schedule.train.linear_end = 0.01
+cfg.sr.model.beta_schedule = CN()
+cfg.sr.model.beta_schedule.train = CN()
+cfg.sr.model.beta_schedule.train.schedule = "linear"
+cfg.sr.model.beta_schedule.train.n_timestep = 2000
+cfg.sr.model.beta_schedule.train.linear_start = 0.000001
+cfg.sr.model.beta_schedule.train.linear_end = 0.01
 
-cfg.model.beta_schedule.val = CN()
-cfg.model.beta_schedule.val.schedule = "linear"
-cfg.model.beta_schedule.val.n_timestep = 2000
-cfg.model.beta_schedule.val.linear_start = 0.000001
-cfg.model.beta_schedule.val.linear_end = 0.01
+cfg.sr.model.beta_schedule.val = CN()
+cfg.sr.model.beta_schedule.val.schedule = "linear"
+cfg.sr.model.beta_schedule.val.n_timestep = 2000
+cfg.sr.model.beta_schedule.val.linear_start = 0.000001
+cfg.sr.model.beta_schedule.val.linear_end = 0.01
 
-cfg.model.diffusion = CN()
-cfg.model.diffusion.image_size = 128
-cfg.model.diffusion.channels = 3
-cfg.model.diffusion.conditional = True
+cfg.sr.model.diffusion = CN()
+cfg.sr.model.diffusion.image_size = 128
+cfg.sr.model.diffusion.channels = 3
+cfg.sr.model.diffusion.conditional = True
 
-#DECA
+# MICA
+cfg.mica.model = CN()
+cfg.mica.model.testing = False
+cfg.mica.model.name = ""
+cfg.mica.model.topology_path = os.path.join(cfg.sr3d_dir, 'data/FLAME2020', 'head_template.obj')
+cfg.mica.model.flame_model_path = os.path.join(cfg.sr3d_dir, 'data/FLAME2020', 'generic_model.pkl')
+cfg.mica.model.flame_lmk_embedding_path = os.path.join(cfg.sr3d_dir, 'data/FLAME2020', 'landmark_embedding.npy')
+cfg.mica.model.n_shape = 300
+cfg.mica.model.layers = 8
+cfg.mica.model.hidden_layers_size = 256
+cfg.mica.model.mapping_layers = 3
+cfg.mica.model.use_pretrained = True
+cfg.mica.model.arcface_pretrained_model = '/shared/storage/cs/staffstore/ps1510/Tutorial/3d-super-resolution-Face-reconstruction/data/pretrained/backbone.pth'
+# got from https://onedrive.live.com/?authkey=%21AFZjr283nwZHqbA&id=4A83B6B633B029CC%215582&cid=4A83B6B633B029CC
+# cfg.model.arcface_pretrained_model = '/scratch/is-rg-ncs/models_weights/arcface-torch/backbone100.pth'
+cfg.mica.model.n_pose = 6 # add by patipol
+cfg.mica.model.n_exp = 50 # add by patipol
 
 # ---------------------------------------------------------------------------- #
 # Options for training
@@ -117,7 +144,6 @@ cfg.train = CN()
 cfg.train.log_dir = 'logs'
 
 # SR
-cfg.sr = CN()
 cfg.sr.train = CN()
 cfg.sr.train.n_iter = 1000000
 cfg.sr.train.val_freq = 10000
@@ -133,24 +159,47 @@ cfg.sr.train.ema_scheduler.step_start_ema = 5000
 cfg.sr.train.ema_scheduler.update_ema_every = 1
 cfg.sr.train.ema_scheduler.ema_decay = 0.9999
 
-# Deca
-cfg.deca = CN()
-cfg.deca.train = CN()
-cfg.deca.train.train_detail = False
-cfg.deca.train.max_epochs = 500
-cfg.deca.train.max_steps = 1000000
-cfg.deca.train.lr = 1e-4
-cfg.deca.train.log_dir = 'logs'
-cfg.deca.train.log_steps = 10
-cfg.deca.train.vis_dir = 'train_images'
-cfg.deca.train.vis_steps = 200
-cfg.deca.train.write_summary = True
-cfg.deca.train.checkpoint_steps = 500
-cfg.deca.train.val_steps = 500
-cfg.deca.train.val_vis_dir = 'val_images'
-cfg.deca.train.eval_steps = 5000
-cfg.deca.train.resume = True
-cfg.deca.train.save_obj = False
+# MICA
+cfg.mica.train = CN()
+
+cfg.mica.train.use_mask = False
+cfg.mica.train.max_epochs = 50
+cfg.mica.train.max_steps = 100000
+cfg.mica.train.lr = 1e-4
+cfg.mica.train.arcface_lr = 1e-3
+cfg.mica.train.weight_decay = 0.0
+cfg.mica.train.lr_update_step = 100000000
+cfg.mica.train.log_dir = 'logs'
+cfg.mica.train.log_steps = 10
+cfg.mica.train.vis_dir = 'train_images'
+cfg.mica.train.vis_steps = 200
+cfg.mica.train.write_summary = True
+cfg.mica.train.checkpoint_steps = 1000
+cfg.mica.train.checkpoint_epochs_steps = 2
+cfg.mica.train.val_steps = 1000
+cfg.mica.train.val_vis_dir = 'val_images'
+cfg.mica.train.eval_steps = 5000
+cfg.mica.train.reset_optimizer = False
+cfg.mica.train.val_save_img = 5000
+cfg.mica.test_dataset = 'now'
+
+# ---------------------------------------------------------------------------- #
+# Mask weights
+# ---------------------------------------------------------------------------- #
+cfg.mica.mask_weights = CN()
+cfg.mica.mask_weights.face = 150.0
+cfg.mica.mask_weights.nose = 50.0
+cfg.mica.mask_weights.lips = 50.0
+cfg.mica.mask_weights.forehead = 50.0
+cfg.mica.mask_weights.lr_eye_region = 50.0
+cfg.mica.mask_weights.eye_region = 50.0
+
+cfg.mica.mask_weights.whole = 1.0
+cfg.mica.mask_weights.ears = 0.01
+cfg.mica.mask_weights.eyes = 0.01
+
+cfg.mica.running_average = 7
+
 
 # ---------------------------------------------------------------------------- #
 # Options for log

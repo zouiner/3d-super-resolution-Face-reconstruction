@@ -81,7 +81,7 @@ def init_weights(net, init_type='kaiming', scale=1, std=0.02):
 
 # Generator
 def define_G(opt):
-    model_opt = opt['model']
+    model_opt = opt['sr']['model']
     if model_opt['which_model_G'] == 'ddpm':
         from .ddpm_modules import diffusion, unet
     elif model_opt['which_model_G'] == 'sr3':
