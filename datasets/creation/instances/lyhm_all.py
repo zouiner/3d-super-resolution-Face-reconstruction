@@ -33,8 +33,8 @@ class LYHM_all(Instance, ABC):
         super(LYHM_all, self).__init__()
         # self.dst = '/scratch/NFC/MICA/LYHM/'
         # self.src = '/scratch/NFC/LYHM/'
-        self.dst = '/shared/storage/cs/staffstore/ps1510/Tutorial/3d-super-resolution-Face-reconstruction/datasets/arcface/LYHM_32_128'
-        self.src = '/shared/storage/cs/staffstore/ps1510/Tutorial/3d-super-resolution-Face-reconstruction/contents/LYHM_32_128'
+        self.dst = '/shared/storage/cs/staffstore/ps1510/Tutorial/3d-super-resolution-Face-reconstruction/datasets/arcface/LYHM_8_16'
+        self.src = '/shared/storage/cs/staffstore/ps1510/Tutorial/3d-super-resolution-Face-reconstruction/contents/LYHM_8_16'
 
     def get_images(self):
         images = {}

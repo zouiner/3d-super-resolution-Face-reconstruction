@@ -70,7 +70,42 @@ class BaseDataset(Dataset, ABC):
 
     def dataroot_sr(self):
         train_dataname = self.config.mica.datasets.training_data[0]
-        self.dataroot = os.path.join(self.config.mica.datasets.dataset_path, train_dataname + '_' + str(self.l_res) + '_' + str(self.r_res))
+        self.dataroot = os.path.join(self.config.mica.datasets.root, train_dataname + '_' + str(self.l_res) + '_' + str(self.r_res), 'arcface_input')
+    
+    def scan_img_arcface(self, path, folder):
+        train_dataname = self.config.mica.datasets.training_data[0]
+        new_paths = []
+
+        # Create full paths for the images
+        for i in path:
+            name = i.split('/')[-1]
+            _path = os.path.join(self.config.mica.datasets.dataset_path, 
+                                f"{train_dataname}_{self.l_res}_{self.r_res}", 
+                                folder, name)
+            new_paths.append(_path)
+        
+        valid_paths = []
+        checked_basenames = set()
+
+        # Check for image pairs and filter
+        for i in new_paths:
+            name = i.split('/')[-1]
+            # Extract the base name by splitting the file name and extracting the middle part
+            parts = name.split('_')
+            base_name = parts[1]  # Assuming the base name is the second part
+            
+            if base_name not in checked_basenames:
+                checked_basenames.add(base_name)
+                # Construct the expected paths for the image pairs
+                pair_1 = os.path.join(os.path.dirname(os.path.dirname(path[0])), 'sr' + self.name_res, f"{parts[0]}_{base_name}_1C.png")
+                pair_2 = os.path.join(os.path.dirname(os.path.dirname(path[0])), 'sr' + self.name_res, f"{str(int(parts[0])+1).zfill(len(parts[0]))}_{base_name}_2C.png")
+                
+                # Check if both files exist
+                if os.path.exists(pair_1) and os.path.exists(pair_2):
+                    valid_paths.append(os.path.join(os.path.dirname(i), f"{parts[0]}_{base_name}_1C.png"))
+                    valid_paths.append(os.path.join(os.path.dirname(i), f"{str(int(parts[0])+1).zfill(len(parts[0]))}_{base_name}_2C.png"))
+        
+        return valid_paths
 
     def initialize(self):
         logger.info(f'[{self.name}] Initialization')
@@ -97,6 +132,7 @@ class BaseDataset(Dataset, ABC):
             if self.need_LR:
                 self.lr_path = Util.get_paths_from_images(
                     '{}/lr_{}'.format(self.dataroot, self.l_res))
+                self.lr_path = self.scan_img_arcface(self.lr_path, 'lr_' + str(self.l_res))
             self.dataset_len = len(self.hr_path)
             if self.data_len <= 0:
                 self.data_len = self.dataset_len
@@ -105,6 +141,9 @@ class BaseDataset(Dataset, ABC):
         else:
             raise NotImplementedError(
                 'data_type [{:s}] is not recognized.'.format(self.datatype))
+        
+        self.sr_path = self.scan_img_arcface(self.sr_path, 'sr' + self.name_res)
+        self.hr_path = self.scan_img_arcface(self.hr_path, 'hr_' + str(self.r_res))
         
         self.create_new_face_dict()
         self.imagepaths = list(self.face_dict.keys())
@@ -130,8 +169,9 @@ class BaseDataset(Dataset, ABC):
                 # Combine into the new dictionary format
                 new_dict[subject_id] = (sr_images, hr_images, lr_images, npz_path)
             else:
-                # Combine into the new dictionary format
-                new_dict[subject_id] = (sr_images, hr_images, npz_path)
+                if sr_images != []:
+                    # Combine into the new dictionary format
+                    new_dict[subject_id] = (sr_images, hr_images, npz_path)
         self.face_dict = new_dict
 
     def set_smallest_k(self):
@@ -162,7 +202,7 @@ class BaseDataset(Dataset, ABC):
         # we want 'sr_32_128/0001_00001_1C.png' with an optional prefix
         parts = Path(path).parts
         # find the index of 'sr_32_128'
-        sr_index = parts.index('sr_32_128')
+        sr_index = parts.index('sr' + self.name_res)
         # construct the new path with prefix
         new_path = Path(*parts[sr_index:])
         return new_path
