@@ -1,0 +1,7 @@
+Proprocessing Data for SR and MICA
+- /shared/storage/cs/staffstore/ps1510/Tutorial/3d-super-resolution-Face-reconstruction/datasets/tool
+    - Create inf hr SR
+
+- /shared/storage/cs/staffstore/ps1510/Tutorial/3d-super-resolution-Face-reconstruction/datasets/creation
+    - Create arcface
+

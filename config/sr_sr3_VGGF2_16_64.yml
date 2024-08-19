@@ -1,4 +1,4 @@
-name: "sr_vggf2_test"
+name: "sr_vggf2_16_64_ntime_500"
 phase: "train"
 device_id: [5,6,7]
 
@@ -10,26 +10,26 @@ path:
   checkpoint_mica: "checkpoint_mica"
   
 sr:
-  pretrained_model_path: '/shared/storage/cs/staffstore/ps1510/Tutorial/Image-Super-Resolution-via-Iterative-Refinement/experiments/sr_vggf2_32_128_240507_154330/checkpoint/I4000000_E1600'
+  pretrained_model_path: '/shared/storage/cs/staffstore/ps1510/Tutorial/Image-Super-Resolution-via-Iterative-Refinement/experiments/sr_vggf2_16_64_ntime_500_240817_155448/checkpoint/I250000_E2'
   datasets:
     train:
-      name: "NoW_32_128"
+      name: "NoW_16_64"
       mode: "HR"
-      dataroot: "contents/NoW_32_128"
+      dataroot: "contents/NoW_16_64"
       datatype: "img"
-      l_resolution: 32
-      r_resolution: 128
+      l_resolution: 16
+      r_resolution: 64
       batch_size: 4
       num_workers: 8
       use_shuffle: true
       data_len: -1
     val:
-      name: "NoW_32_128"
+      name: "NoW_16_64"
       mode: "LRHR"
-      dataroot: "contents/NoW_32_128"
+      dataroot: "contents/NoW_16_64"
       datatype: "img"
-      l_resolution: 32
-      r_resolution: 128
+      l_resolution: 16
+      r_resolution: 64
       data_len: 10
   model:
     which_model_G: "sr3"
@@ -46,17 +46,17 @@ sr:
         - 8
       attn_res:
         - 16
-      res_blocks: 2
+      res_blocks: 3
       dropout: 0.2
     beta_schedule:
       train:
         schedule: "linear"
-        n_timestep: 2000
+        n_timestep: 500
         linear_start: 0.000001
         linear_end: 0.01
       val:
         schedule: "linear"
-        n_timestep: 2000
+        n_timestep: 500
         linear_start: 0.000001
         linear_end: 0.01
     diffusion:
@@ -64,7 +64,7 @@ sr:
       channels: 3
       conditional: true
   train:
-    n_iter: 4000000
+    n_iter: 890000 # 4000000
     val_freq: 10000
     save_checkpoint_freq: 10000
     print_freq: 200
@@ -99,13 +99,15 @@ mica:
     reset_optimizer: False
     max_steps: 160000
     log_steps: 50
-    val_steps: 1 #300
-    vis_steps: 1 #1200
-    val_save_img: 30 #1200
-    checkpoint_steps: 15 #1000
-    checkpoint_epochs_steps: 100 #10000
+    val_steps: 100 #300
+    vis_steps: 100 #1200
+    val_save_img: 300 #1200
+    checkpoint_steps: 150 #1000
+    checkpoint_epochs_steps: 1000 #10000
 
 # -------------------------------------------------------------------------
 
 wandb:
   project: "sr_vggf2"
+
+# python main.py -p train -c config/sr_sr3_VGGF2_8_16.yml
