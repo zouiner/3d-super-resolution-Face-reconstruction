@@ -239,6 +239,7 @@ class Trainer(object):
                     
                     # SR # -------------------------------------------
                     loss_sr = []
+                    
                     for i in range(len(train_data['SR'])):
                         train_data_sub = self.filter_and_slice_train_data(train_data, order = i)
                         if current_step > n_iter + self.cfg.mica.train.max_steps:
@@ -308,8 +309,6 @@ class Trainer(object):
                             # reset dataloader    
                             self.val_iter = iter(self.val_dataloader)
                             
-                            self.diffusion.set_new_noise_schedule(
-                                self.cfg.model.beta_schedule.train, schedule_phase='train')
                             # log
                             logger.info('# Validation # PSNR: {:.4e}'.format(avg_psnr))
                             logger_val = logging.getLogger('val')  # validation logger
@@ -334,6 +333,9 @@ class Trainer(object):
                     
                     # MICA # ------------------------------------------- 
                     images_list = []
+                    arcface_list = []
+                    self.diffusion.set_new_noise_schedule(
+                                self.cfg.sr.model.beta_schedule.val, schedule_phase='val')
                     for i in range(len(train_data['SR'])):
                         for j in range(len(self.filter_and_slice_train_data(train_data, order = i)['SR'])):
                             train_data_sub['SR'] = self.filter_and_slice_train_data(train_data, order = i)['SR'][j].unsqueeze(0)
@@ -343,20 +345,32 @@ class Trainer(object):
                             self.diffusion.test(continous=False)
                             visuals = self.diffusion.get_current_visuals()
                             
+                            sr_up_img = F.interpolate(visuals['SR'].unsqueeze(0), size=( 224, 224), mode='bilinear', align_corners=False).squeeze(0)
+                            sr_img = Metrics.tensor2img(sr_up_img)
+                            
+                            if self.cfg.mica.train.arcface_new:
+                                temp_arcface = self.create_arcface_MICA(sr_img)
+                            
                             ### test image ####
-                            if current_step % 100 == 1:
+                            if current_step % 500 == 1:
                                 sr_img = Metrics.tensor2img(visuals['SR'])
                                 os.makedirs(os.path.join(self.cfg.output_dir, 'test'), exist_ok=True)
-                                Metrics.save_img(sr_img, '{}/test/{}_{}_test_sr.png'.format(self.cfg.output_dir, i, j))
+                                Metrics.save_img(sr_img, '{}/test/{}_{}_{}_test_sr.png'.format(self.cfg.output_dir, current_step, i, j))
                             ### test image ####
                             
-                            sr_up_img = F.interpolate(visuals['SR'].unsqueeze(0), size=( 224, 224), mode='bilinear', align_corners=False).squeeze(0)
                             images_list.append(sr_up_img)
+                            arcface_list.append(torch.tensor(temp_arcface))
                     images_array = torch.stack(images_list).view(train_data['image'].shape)
+                    arcface_array = torch.stack(arcface_list).view(train_data['arcface'].shape)
                     
                     # Use the output from the SR feed to MICA
                     batch = self.filter_and_slice_train_data(train_data, 0, keys_to_keep_and_slice = {}, keys_to_keep = {'image', 'arcface', 'imagename', 'dataset', 'flame'})
                     batch['image'] = images_array
+                    batch['arcface'] = arcface_array
+                    
+                    # reset setting of training diffusion
+                    self.diffusion.set_new_noise_schedule(
+                        self.cfg.sr.model.beta_schedule.train, schedule_phase='train')
                     
                     if self.global_step > self.cfg.mica.train.max_steps:
                         break
@@ -376,6 +390,7 @@ class Trainer(object):
                     self.opt.step()
                     self.diffusion.optG.step()
                     self.global_step += 1
+                    
 
                     if self.global_step % self.cfg.mica.train.log_steps == 0 and self.device[0] == 0:
                         loss_info = f"\n" \
@@ -567,6 +582,30 @@ class Trainer(object):
     def evaluate_MICA(self):
         # NOW Benchmark
         pass
+    
+    def create_arcface_MICA(self, array_image):
+
+        array = self.standardize_image(array_image)
+
+        # Create the ArcFace input blob using OpenCV's DNN module
+        input_mean = 127.5
+        input_std = 127.5
+        blob = cv2.dnn.blobFromImage(array, 1.0 / input_std, (112, 112), (input_mean, input_mean, input_mean), swapRB=True)
+        
+        return blob
+    
+    def standardize_image(self, array_image):
+        # Convert the image to float32 to avoid data type issues during standardization
+        array_image = array_image.astype(np.float32)
+        
+        # Calculate the mean and standard deviation across all pixels
+        mean = np.mean(array_image)
+        std = np.std(array_image)
+        
+        # Standardize the image
+        standardized_image = (array_image - mean) / std
+        
+        return standardized_image
     
     def prepare_data(self):
         generator = torch.Generator()

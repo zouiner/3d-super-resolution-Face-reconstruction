@@ -181,6 +181,8 @@ cfg.mica.train.val_vis_dir = 'val_images_mica'
 cfg.mica.train.eval_steps = 5000
 cfg.mica.train.reset_optimizer = False
 cfg.mica.train.val_save_img = 5000
+cfg.mica.train.arcface_new = False
+
 cfg.mica.test_dataset = 'now'
 
 # ---------------------------------------------------------------------------- #

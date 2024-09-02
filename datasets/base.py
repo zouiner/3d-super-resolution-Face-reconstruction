@@ -132,7 +132,7 @@ class BaseDataset(Dataset, ABC):
             if self.need_LR:
                 self.lr_path = Util.get_paths_from_images(
                     '{}/lr_{}'.format(self.dataroot, self.l_res))
-                self.lr_path = self.scan_img_arcface(self.lr_path, 'lr_' + str(self.l_res))
+                self.lr_path = self.scan_img_arcface(self.lr_path, 'lr_' + str(self.l_res)) # !!edit aceface
             self.dataset_len = len(self.hr_path)
             if self.data_len <= 0:
                 self.data_len = self.dataset_len
@@ -142,8 +142,8 @@ class BaseDataset(Dataset, ABC):
             raise NotImplementedError(
                 'data_type [{:s}] is not recognized.'.format(self.datatype))
         
-        self.sr_path = self.scan_img_arcface(self.sr_path, 'sr' + self.name_res)
-        self.hr_path = self.scan_img_arcface(self.hr_path, 'hr_' + str(self.r_res))
+        self.sr_path = self.scan_img_arcface(self.sr_path, 'sr' + self.name_res) # !!edit aceface
+        self.hr_path = self.scan_img_arcface(self.hr_path, 'hr_' + str(self.r_res)) # !!edit aceface
         
         self.create_new_face_dict()
         self.imagepaths = list(self.face_dict.keys())
