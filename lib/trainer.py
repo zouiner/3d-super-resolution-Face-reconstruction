@@ -239,97 +239,104 @@ class Trainer(object):
                     
                     # SR # -------------------------------------------
                     loss_sr = []
+                    train_data_sub = self.filter_and_slice_train_data(train_data, order = 0)
+
+                    for i in range(1,len(train_data['SR'])): # make k x b, c, h, w
+                        _train_data_sub = self.filter_and_slice_train_data(train_data, order = i)
+                        for key in train_data_sub:
+                            if isinstance(train_data_sub[key], torch.Tensor):
+                                train_data_sub[key] = torch.cat([train_data_sub[key], _train_data_sub[key]], dim=0)
+                            elif isinstance(train_data_sub[key], list):
+                                train_data_sub[key].extend(_train_data_sub[key])
                     
-                    for i in range(len(train_data['SR'])):
-                        train_data_sub = self.filter_and_slice_train_data(train_data, order = i)
-                        if current_step > n_iter + self.cfg.mica.train.max_steps:
-                            break
-                        self.diffusion.feed_data(train_data_sub)
-                        loss_sr.append(self.diffusion.optimize_parameters())
-                    
-                    
+                    if current_step > n_iter + self.cfg.mica.train.max_steps:
+                        break
+                    self.diffusion.feed_data(train_data_sub)
+                    loss_sr.append(self.diffusion.optimize_parameters())
+                
+                
+                    # log
+                    if current_step % self.cfg.sr.train.print_freq == 0:
+                        logs = self.diffusion.get_current_log()
+                        message = '<epoch:{:3d}, iter:{:8,d}, sub-iter:{:2,d}> '.format(
+                            self.current_epoch, current_step, i)
+                        for k, v in logs.items():
+                            message += '{:s}: {:.4e} '.format(k, v)
+                            self.tb_logger.add_scalar(k, v, current_step)
+                        logger.info(message)
+
+                        if self.wandb_logger:
+                            self.wandb_logger.log_metrics(logs)
+
+                    # validation
+                    if current_step % self.cfg.sr.train.val_freq == 0:
+                        avg_psnr = 0.0
+                        idx = 0
+                        result_path = '{}/{}'.format(self.cfg.path.results, self.current_epoch)
+                        os.makedirs(result_path, exist_ok=True)
+
+                        self.diffusion.set_new_noise_schedule(
+                            self.cfg.sr.model.beta_schedule.val, schedule_phase='val')
+                        for _,  val_data in enumerate(self.val_iter):
+                            idx += 1
+                            self.diffusion.feed_data(val_data)
+                            self.diffusion.test(continous=False)
+                            visuals = self.diffusion.get_current_visuals()
+                            sr_img = Metrics.tensor2img(visuals['SR'])  # uint8
+                            hr_img = Metrics.tensor2img(visuals['HR'])  # uint8
+                            lr_img = Metrics.tensor2img(visuals['LR'])  # uint8
+                            fake_img = Metrics.tensor2img(visuals['INF'])  # uint8
+
+                            # generation
+                            Metrics.save_img(
+                                hr_img, '{}/{}_{}_hr.png'.format(result_path, current_step, idx))
+                            Metrics.save_img(
+                                sr_img, '{}/{}_{}_sr.png'.format(result_path, current_step, idx))
+                            Metrics.save_img(
+                                lr_img, '{}/{}_{}_lr.png'.format(result_path, current_step, idx))
+                            Metrics.save_img(
+                                fake_img, '{}/{}_{}_inf.png'.format(result_path, current_step, idx))
+                            self.tb_logger.add_image(
+                                'Iter_{}'.format(current_step),
+                                np.transpose(np.concatenate(
+                                    (fake_img, sr_img, hr_img), axis=1), [2, 0, 1]),
+                                idx)
+                            avg_psnr += Metrics.calculate_psnr(
+                                sr_img, hr_img)
+
+                            if self.wandb_logger:
+                                self.wandb_logger.log_image(
+                                    f'validation_{idx}', 
+                                    np.concatenate((fake_img, sr_img, hr_img), axis=1)
+                                )
+                                
+                                
+
+                        avg_psnr = avg_psnr / idx
+                        # reset dataloader    
+                        self.val_iter = iter(self.val_dataloader)
+                        
                         # log
-                        if current_step % self.cfg.sr.train.print_freq == 0:
-                            logs = self.diffusion.get_current_log()
-                            message = '<epoch:{:3d}, iter:{:8,d}, sub-iter:{:2,d}> '.format(
-                                self.current_epoch, current_step, i)
-                            for k, v in logs.items():
-                                message += '{:s}: {:.4e} '.format(k, v)
-                                self.tb_logger.add_scalar(k, v, current_step)
-                            logger.info(message)
+                        logger.info('# Validation # PSNR: {:.4e}'.format(avg_psnr))
+                        logger_val = logging.getLogger('val')  # validation logger
+                        logger_val.info('<epoch:{:3d}, iter:{:8,d}> psnr: {:.4e}'.format(
+                            self.current_epoch, current_step, avg_psnr))
+                        # tensorboard logger
+                        self.tb_logger.add_scalar('psnr', avg_psnr, current_step)
 
-                            if self.wandb_logger:
-                                self.wandb_logger.log_metrics(logs)
+                        if self.wandb_logger:
+                            self.wandb_logger.log_metrics({
+                                'validation/val_psnr': avg_psnr,
+                                'validation/val_step': val_step
+                            })
+                            val_step += 1
 
-                        # validation
-                        if current_step % self.cfg.sr.train.val_freq == 0:
-                            avg_psnr = 0.0
-                            idx = 0
-                            result_path = '{}/{}'.format(self.cfg.path.results, self.current_epoch)
-                            os.makedirs(result_path, exist_ok=True)
+                    if current_step % self.cfg.sr.train.save_checkpoint_freq == 0:
+                        logger.info('Saving models and training states.')
+                        self.diffusion.save_network(self.current_epoch, current_step)
 
-                            self.diffusion.set_new_noise_schedule(
-                                self.cfg.sr.model.beta_schedule.val, schedule_phase='val')
-                            for _,  val_data in enumerate(self.val_iter):
-                                idx += 1
-                                self.diffusion.feed_data(val_data)
-                                self.diffusion.test(continous=False)
-                                visuals = self.diffusion.get_current_visuals()
-                                sr_img = Metrics.tensor2img(visuals['SR'])  # uint8
-                                hr_img = Metrics.tensor2img(visuals['HR'])  # uint8
-                                lr_img = Metrics.tensor2img(visuals['LR'])  # uint8
-                                fake_img = Metrics.tensor2img(visuals['INF'])  # uint8
-
-                                # generation
-                                Metrics.save_img(
-                                    hr_img, '{}/{}_{}_hr.png'.format(result_path, current_step, idx))
-                                Metrics.save_img(
-                                    sr_img, '{}/{}_{}_sr.png'.format(result_path, current_step, idx))
-                                Metrics.save_img(
-                                    lr_img, '{}/{}_{}_lr.png'.format(result_path, current_step, idx))
-                                Metrics.save_img(
-                                    fake_img, '{}/{}_{}_inf.png'.format(result_path, current_step, idx))
-                                self.tb_logger.add_image(
-                                    'Iter_{}'.format(current_step),
-                                    np.transpose(np.concatenate(
-                                        (fake_img, sr_img, hr_img), axis=1), [2, 0, 1]),
-                                    idx)
-                                avg_psnr += Metrics.calculate_psnr(
-                                    sr_img, hr_img)
-
-                                if self.wandb_logger:
-                                    self.wandb_logger.log_image(
-                                        f'validation_{idx}', 
-                                        np.concatenate((fake_img, sr_img, hr_img), axis=1)
-                                    )
-                                    
-                                    
-
-                            avg_psnr = avg_psnr / idx
-                            # reset dataloader    
-                            self.val_iter = iter(self.val_dataloader)
-                            
-                            # log
-                            logger.info('# Validation # PSNR: {:.4e}'.format(avg_psnr))
-                            logger_val = logging.getLogger('val')  # validation logger
-                            logger_val.info('<epoch:{:3d}, iter:{:8,d}> psnr: {:.4e}'.format(
-                                self.current_epoch, current_step, avg_psnr))
-                            # tensorboard logger
-                            self.tb_logger.add_scalar('psnr', avg_psnr, current_step)
-
-                            if self.wandb_logger:
-                                self.wandb_logger.log_metrics({
-                                    'validation/val_psnr': avg_psnr,
-                                    'validation/val_step': val_step
-                                })
-                                val_step += 1
-
-                        if current_step % self.cfg.sr.train.save_checkpoint_freq == 0:
-                            logger.info('Saving models and training states.')
-                            self.diffusion.save_network(self.current_epoch, current_step)
-
-                            if self.wandb_logger and opt['log_wandb_ckpt']:
-                                self.wandb_logger.log_checkpoint(self.current_epoch, current_step)
+                        if self.wandb_logger and opt['log_wandb_ckpt']:
+                            self.wandb_logger.log_checkpoint(self.current_epoch, current_step)
                     
                     # MICA # ------------------------------------------- 
                     images_list = []
@@ -350,6 +357,7 @@ class Trainer(object):
                             
                             if self.cfg.mica.train.arcface_new:
                                 temp_arcface = self.create_arcface_MICA(sr_img)
+                                arcface_list.append(torch.tensor(temp_arcface))
                             
                             ### test image ####
                             if current_step % 500 == 1:
@@ -359,7 +367,7 @@ class Trainer(object):
                             ### test image ####
                             
                             images_list.append(sr_up_img)
-                            arcface_list.append(torch.tensor(temp_arcface))
+                            
                     images_array = torch.stack(images_list).view(train_data['image'].shape)
                     arcface_array = torch.stack(arcface_list).view(train_data['arcface'].shape)
                     
