@@ -1,6 +1,6 @@
 name: "sr_vggf2_test"
 phase: "train"
-device_id: [5,6,7]
+device_id: [0,1,2]
 
 path:
   log: "logs"

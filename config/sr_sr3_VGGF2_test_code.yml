@@ -1,6 +1,6 @@
-name: "sr_vggf2_16_64_ntime_500"
+name: "sr_sr3_VGGF2_test_code"
 phase: "train"
-device_id: [0,4,7]
+device_id: [2,3,5]
 
 path:
   log: "logs"
@@ -10,26 +10,26 @@ path:
   checkpoint_mica: "checkpoint_mica"
   
 sr:
-  pretrained_model_path: '/shared/storage/cs/staffstore/ps1510/Tutorial/Image-Super-Resolution-via-Iterative-Refinement/experiments/sr_vggf2_16_64_ntime_500_240817_155448/checkpoint/I250000_E2'
+  pretrained_model_path: '/shared/storage/cs/staffstore/ps1510/Tutorial/Image-Super-Resolution-via-Iterative-Refinement/experiments/sr_vggf2_8_16_ntime_100_240814_141652/checkpoint/I1520000_E8'
   datasets:
     train:
-      name: "NoW_16_64"
+      name: "LYHM_8_16"
       mode: "HR"
-      dataroot: "contents/NoW_16_64"
+      dataroot: "contents/LYHM_8_16"
       datatype: "img"
-      l_resolution: 16
-      r_resolution: 64
+      l_resolution: 8
+      r_resolution: 16
       batch_size: 4
       num_workers: 8
       use_shuffle: true
       data_len: -1
     val:
-      name: "NoW_16_64"
+      name: "LYHM_8_16"
       mode: "LRHR"
-      dataroot: "contents/NoW_16_64"
+      dataroot: "contents/LYHM_8_16"
       datatype: "img"
-      l_resolution: 16
-      r_resolution: 64
+      l_resolution: 8
+      r_resolution: 16
       data_len: 10
   model:
     which_model_G: "sr3"
@@ -46,7 +46,7 @@ sr:
         - 8
       attn_res:
         - 16
-      res_blocks: 3
+      res_blocks: 2
       dropout: 0.2
     beta_schedule:
       train:
@@ -64,7 +64,7 @@ sr:
       channels: 3
       conditional: true
   train:
-    n_iter: 890000 # 4000000
+    n_iter: 1520000 # 4000000
     val_freq: 10000
     save_checkpoint_freq: 10000
     print_freq: 200

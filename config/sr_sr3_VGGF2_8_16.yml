@@ -1,6 +1,6 @@
-name: "sr_vggf2_8_16"
+name: "sr_vggf2_8_16_n_100_test"
 phase: "train"
-device_id: [5,6,7]
+device_id: [0,1,2]
 
 path:
   log: "logs"
@@ -10,7 +10,7 @@ path:
   checkpoint_mica: "checkpoint_mica"
   
 sr:
-  pretrained_model_path: '/shared/storage/cs/staffstore/ps1510/Tutorial/Image-Super-Resolution-via-Iterative-Refinement/experiments/sr_vggf2_8_16_ntime_500_240814_142658/checkpoint/I890000_E5'
+  pretrained_model_path: '/shared/storage/cs/staffstore/ps1510/Tutorial/Image-Super-Resolution-via-Iterative-Refinement/experiments/sr_vggf2_8_16_ntime_100_240814_141652/checkpoint/I1520000_E8'
   datasets:
     train:
       name: "LYHM_8_16"
@@ -46,17 +46,17 @@ sr:
         - 8
       attn_res:
         - 16
-      res_blocks: 3
+      res_blocks: 2
       dropout: 0.2
     beta_schedule:
       train:
         schedule: "linear"
-        n_timestep: 500
+        n_timestep: 100
         linear_start: 0.000001
         linear_end: 0.01
       val:
         schedule: "linear"
-        n_timestep: 500
+        n_timestep: 100
         linear_start: 0.000001
         linear_end: 0.01
     diffusion:
@@ -64,9 +64,9 @@ sr:
       channels: 3
       conditional: true
   train:
-    n_iter: 890000 # 4000000
+    n_iter: 1520000 # 4000000
     val_freq: 10000
-    save_checkpoint_freq: 10000
+    save_checkpoint_freq: 2000
     print_freq: 200
     optimizer:
       type: "adam"
@@ -84,7 +84,7 @@ mica:
       n_shape: 300
       name: 'mica'
   datasets:
-    root: '/shared/storage/cs/staffstore/ps1510/Tutorial/3d-super-resolution-Face-reconstruction/datasets/arcface'
+    root: '/shared/storage/cs/staffstore/ps1510/Tutorial/3d-super-resolution-Face-reconstruction/datasets/temp_arcface'
     training_data: [ 'LYHM' ]
     eval_data: [ 'LYHM' ]
     dataset_path: 'contents/'
@@ -102,8 +102,9 @@ mica:
     val_steps: 100 #300
     vis_steps: 100 #1200
     val_save_img: 300 #1200
-    checkpoint_steps: 150 #1000
-    checkpoint_epochs_steps: 1000 #10000
+    checkpoint_steps: 500 #1000
+    checkpoint_epochs_steps: 2000 #10000
+    arcface_new: True
 
 # -------------------------------------------------------------------------
 
