@@ -1,12 +1,22 @@
-import logging
+# import logging
+# logger = logging.getLogger('base')
 from collections import OrderedDict
+from loguru import logger
 
 import torch
 import torch.nn as nn
 import os
 import model.sr.networks as networks
 from .base_model import BaseModel
-logger = logging.getLogger('base')
+
+
+
+def list_files_in_directory(directory_path):
+    file_paths = []
+    for root, dirs, files in os.walk(directory_path):
+        for file in files:
+            file_paths.append(os.path.join(root, file))
+    return file_paths
 
 
 class DDPM(BaseModel):
@@ -43,7 +53,7 @@ class DDPM(BaseModel):
                 optim_params, lr=opt['train']["optimizer"]["lr"])
             self.log_dict = OrderedDict()
         self.load_network()
-        self.print_network()
+        # self.print_network()
 
     def feed_data(self, data):
         self.data = self.set_device(data)
@@ -123,7 +133,7 @@ class DDPM(BaseModel):
             net_struc_str = '{}'.format(self.netG.__class__.__name__)
 
         logger.info(
-            'Network G structure: {}, with parameters: {:,d}'.format(net_struc_str, n))
+            '[SR] Network G structure: {}, with parameters: {:,d}'.format(net_struc_str, n))
         logger.info(s)
 
     def save_network(self, epoch, iter_step):
@@ -149,13 +159,21 @@ class DDPM(BaseModel):
         torch.save(opt_state, opt_path)
 
         logger.info(
-            'Saved model in [{:s}] ...'.format(gen_path))
+            '[SR] Saved model in [{:s}] ...'.format(gen_path))
 
     def load_network(self):
-        load_path = self.opt['sr']['pretrained_model_path']
+        load_path = sorted(list_files_in_directory(self.opt.path.checkpoint_sr))
+        pretrained_model = self.opt['sr']['pretrained_model_path']
+        if len(load_path) > 0:
+                load_path = load_path[-1][:-8]
+        if os.path.exists('{}_gen.pth'.format(pretrained_model)):
+            load_path = pretrained_model
+        else:
+            self.opt['sr']['pretrained_model_path'] = load_path
+        
         if load_path is not None:
             logger.info(
-                'Loading pretrained model for G [{:s}] ...'.format(load_path))
+                '[SR] Load pretrained model for G [{:s}]'.format(load_path))
             gen_path = '{}_gen.pth'.format(load_path)
             opt_path = '{}_opt.pth'.format(load_path)
             # gen
@@ -173,3 +191,4 @@ class DDPM(BaseModel):
                 self.optG.load_state_dict(opt['optimizer'])
                 self.begin_step = opt['iter']
                 self.begin_epoch = opt['epoch']
+            

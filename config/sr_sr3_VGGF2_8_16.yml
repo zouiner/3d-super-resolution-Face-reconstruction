@@ -1,6 +1,6 @@
-name: "sr_vggf2_8_16_n_100_test"
+name: "sr_vggf2_8_16_n_100_20240915_combined_arcface"
 phase: "train"
-device_id: [0,1,2]
+device_id: [3,2,1]
 
 path:
   log: "logs"
@@ -100,9 +100,9 @@ mica:
     max_steps: 160000
     log_steps: 50
     val_steps: 100 #300
-    vis_steps: 100 #1200
+    vis_steps: 500 #1200
     val_save_img: 300 #1200
-    checkpoint_steps: 500 #1000
+    checkpoint_steps: 2000 #1000
     checkpoint_epochs_steps: 2000 #10000
     arcface_new: True
 
