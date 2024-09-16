@@ -20,6 +20,7 @@ import re
 from abc import ABC
 from functools import reduce
 from pathlib import Path
+import glob
 
 import loguru
 import numpy as np
@@ -31,7 +32,14 @@ from torchvision import transforms
 import lmdb
 import random
 import datasets.util as Util
+from insightface.utils import face_align
+import cv2
 from PIL import Image
+
+
+lmk_folder = '/shared/storage/cs/staffstore/ps1510/Work/TAP2-2/results/lmk_LYHM/arcface_mymodel/lmk'
+input_mean = 127.5
+input_std = 127.5
 
 class BaseDataset(Dataset, ABC):
     def __init__(self, name, config, device, isEval, need_LR=False, split='train'):
@@ -188,12 +196,6 @@ class BaseDataset(Dataset, ABC):
         loguru.logger.info(f'Dataset {self.name} with min K = {self.min_max_K} max K = {max_min_k} length = {len(self.face_dict)} total images = {self.total_images}')
         return self.min_max_K
 
-    def compose_transforms(self, *args):
-        self.transforms = transforms.Compose([t for t in args])
-
-    def get_arcface_path(self, image_path):
-        return re.sub('png|jpg', 'npy', str(image_path))
-
     def __len__(self):
         return len(self.imagepaths)
     
@@ -238,7 +240,20 @@ class BaseDataset(Dataset, ABC):
             image = np.array(Image.open(image_path))
             image = image / 255.
             image = image.transpose(2, 0, 1)
-            arcface_image = np.load(self.get_arcface_path(image_path), allow_pickle=True)
+            
+            subject = image_path.name.split('/')[-1].split('_')[-2]
+            idx = image_path.name.split('/')[-1].split('_')[-1][:-4] # normal _sr should use [-2]
+        
+            # lmk path
+            lmk_paths = sorted(glob.glob(lmk_folder + '/*/*'))
+            for lmk_path in lmk_paths:
+                if subject == lmk_path.split('/')[-2] and idx == lmk_path.split('/')[-1][:-4]:
+                    kps = np.load(lmk_path, allow_pickle=True)
+                    aimg = face_align.norm_crop(cv2.imread(str(image_path)), landmark=kps)
+                    blob = cv2.dnn.blobFromImages([aimg], 1.0 / input_std, (112, 112), (input_mean, input_mean, input_mean), swapRB=True)
+                    continue
+                
+            arcface_image = blob[0]
 
             images_list.append(image)
             arcface_list.append(torch.tensor(arcface_image))

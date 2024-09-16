@@ -57,3 +57,5 @@ input_folder = '/shared/storage/cs/staffstore/ps1510/Tutorial/3d-super-resolutio
 output_folder = '/shared/storage/cs/staffstore/ps1510/Tutorial/3d-super-resolution-Face-reconstruction/datasets/temp_arcface/LYHM_8_16'
 output_folder = output_folder + '/arcface_input'
 process_images_in_folder(input_folder, output_folder)
+
+# /shared/storage/cs/staffstore/ps1510/Tutorial/Dataset/Now_benchmark/NoW_Dataset/final_release_version/face_image

@@ -45,6 +45,8 @@ def main(cfg):
     for i in cfg.path:
         os.makedirs(os.path.join(cfg.output_dir, cfg.path[i]), exist_ok=True)
     
+    # Copy the file
+    shutil.copy(cfg.cfg_file, os.path.join(cfg.output_dir, cfg.train.log_dir, 'config.yml'))
     with open(os.path.join(cfg.output_dir, cfg.train.log_dir, 'full_config.yaml'), 'w') as f:
         yaml.dump(cfg, f, default_flow_style=False)
     
