@@ -38,8 +38,7 @@ from PIL import Image
 
 
 lmk_folder = '/shared/storage/cs/staffstore/ps1510/Work/TAP2-2/results/lmk_LYHM/arcface_mymodel/lmk'
-input_mean = 127.5
-input_std = 127.5
+ori_path = '/shared/storage/cs/staffstore/ps1510/Tutorial/3d-super-resolution-Face-reconstruction/datasets/arcface/LYHM/arcface_input'
 
 class BaseDataset(Dataset, ABC):
     def __init__(self, name, config, device, isEval, need_LR=False, split='train'):
@@ -244,16 +243,9 @@ class BaseDataset(Dataset, ABC):
             subject = image_path.name.split('/')[-1].split('_')[-2]
             idx = image_path.name.split('/')[-1].split('_')[-1][:-4] # normal _sr should use [-2]
         
-            # lmk path
-            lmk_paths = sorted(glob.glob(lmk_folder + '/*/*'))
-            for lmk_path in lmk_paths:
-                if subject == lmk_path.split('/')[-2] and idx == lmk_path.split('/')[-1][:-4]:
-                    kps = np.load(lmk_path, allow_pickle=True)
-                    aimg = face_align.norm_crop(cv2.imread(str(image_path)), landmark=kps)
-                    blob = cv2.dnn.blobFromImages([aimg], 1.0 / input_std, (112, 112), (input_mean, input_mean, input_mean), swapRB=True)
-                    continue
-                
-            arcface_image = blob[0]
+            aimg_path = os.path.join(ori_path, subject, idx + '.npy')
+
+            arcface_image = np.load(aimg_path)
 
             images_list.append(image)
             arcface_list.append(torch.tensor(arcface_image))

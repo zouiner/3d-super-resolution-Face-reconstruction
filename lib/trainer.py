@@ -614,37 +614,9 @@ class Trainer(object):
     
     def create_arcface_MICA(self, array_image):
 
-        # # Create the ArcFace input blob using OpenCV's DNN module
-        # input_mean = 127.5
-        # input_std = 127.5
-        # lmk_folder = '/shared/storage/cs/staffstore/ps1510/Work/TAP2-2/results/lmk_LYHM/arcface_mymodel/lmk' # !! move it into config file
         
-        # idx = str(i+1) + 'C'  # i => 0,1
+        blob = cv2.dnn.blobFromImages([array_image], 1.0 / input_std, (112, 112), (input_mean, input_mean, input_mean), swapRB=True) # cv2.resize(img, (224, 224))
         
-        # # lmk path
-        # lmk_paths = sorted(glob.glob(lmk_folder + '/*/*'))
-        # for lmk_path in lmk_paths:
-        #     if subject == lmk_path.split('/')[-2] and idx == lmk_path.split('/')[-1][:-4]:
-        #         kps = np.load(lmk_path, allow_pickle=True)
-        #         aimg = face_align.norm_crop(array_image, landmark=kps)
-        #         blob = cv2.dnn.blobFromImages([aimg], 1.0 / input_std, (112, 112), (input_mean, input_mean, input_mean), swapRB=True)
-        #         continue
-            
-        # arcface_image = blob[0]
-        
-        bboxes, kpss = app.detect(img)
-        if bboxes.shape[0] == 0:
-            blob = cv2.dnn.blobFromImages([img], 1.0 / input_std, (112, 112), (input_mean, input_mean, input_mean), swapRB=True) # cv2.resize(img, (224, 224))
-        else:
-            i = get_center(bboxes, img)
-            bbox = bboxes[i, 0:4]
-            det_score = bboxes[i, 4]
-            kps = None
-            if kpss is not None:
-                kps = kpss[i]
-            face = Face(bbox=bbox, kps=kps, det_score=det_score)
-            
-            blob, aimg = get_arcface_input(face, img)
         
         return blob[0]
     

@@ -1,4 +1,4 @@
-name: "sr_vggf2_8_16_n_100_20240915_combined_arcface"
+name: "sr_vggf2_8_16_n_100_20240924_compute_arcface"
 phase: "train"
 device_id: [3,2,1]
 
