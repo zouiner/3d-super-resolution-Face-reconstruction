@@ -29,7 +29,8 @@ cfg.output_dir = "/shared/storage/cs/staffstore/ps1510/Tutorial/3d-super-resolut
 cfg.path = CN()
 cfg.path.log = "logs"
 cfg.path.tb_logger = "tb_logger"
-cfg.path.results = "results"
+cfg.path.results = "results_train"
+cfg.path.results_val = "results_val"
 cfg.path.checkpoint_sr = "checkpoint_sr"
 cfg.path.checkpoint_mica = "checkpoint_mica"
 
@@ -242,12 +243,13 @@ def parse_args():
 
     cfg = get_cfg_defaults()
     cfg.cfg_file = None
-    cfg.mode = args.phase
     
     if args.config is not None:
         cfg_file = args.config
         cfg = update_cfg(cfg, args.config)
         cfg.cfg_file = cfg_file
+        
+    cfg.phase = args.phase  
 
     cfg.output_dir = os.path.join(cfg.output_dir, cfg.name)
     

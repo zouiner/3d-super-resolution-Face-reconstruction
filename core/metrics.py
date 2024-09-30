@@ -3,6 +3,7 @@ import math
 import numpy as np
 import cv2
 from torchvision.utils import make_grid
+import torch
 
 
 def tensor2img(tensor, out_type=np.uint8, min_max=(-1, 1)):
@@ -35,7 +36,23 @@ def tensor2img(tensor, out_type=np.uint8, min_max=(-1, 1)):
 
 
 def save_img(img, img_path, mode='RGB'):
-    cv2.imwrite(img_path, cv2.cvtColor(img, cv2.COLOR_RGB2BGR))
+    # Check if img is a PyTorch tensor
+    if isinstance(img, torch.Tensor):
+        # Move to CPU if necessary, detach from computation graph, and convert to NumPy array
+        img = img.detach().cpu().numpy().squeeze(0)
+        
+        # Convert from CHW (PyTorch format) to HWC (OpenCV format)
+        img = img.transpose(1, 2, 0)
+        
+        # If the image is float (e.g., in range [0, 1]), scale to [0, 255] and convert to uint8
+        if img.dtype == 'float32' or img.dtype == 'float64':
+            img = (img * 255).clip(0, 255).astype('uint8')
+    
+    # Convert color from RGB to BGR (OpenCV uses BGR)
+    img_bgr = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+    
+    # Save the image using OpenCV
+    cv2.imwrite(img_path, img_bgr)
     # cv2.imwrite(img_path, img)
 
 

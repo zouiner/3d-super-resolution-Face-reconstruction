@@ -167,9 +167,9 @@ class DDPM(BaseModel):
         if len(load_path) > 0:
                 load_path = load_path[-1][:-8]
         if os.path.exists('{}_gen.pth'.format(pretrained_model)):
-            load_path = pretrained_model
-        else:
             self.opt['sr']['pretrained_model_path'] = load_path
+        else:
+            load_path = pretrained_model
         
         if load_path is not None:
             logger.info(
