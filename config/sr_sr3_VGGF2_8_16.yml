@@ -1,6 +1,6 @@
 name: "sr_vggf2_8_16_n_100_20240924_compute_arcface"
 phase: "train"
-device_id: [3,2,1]
+device_id: [0,1,2]
 
 path:
   log: "logs"
@@ -26,11 +26,11 @@ sr:
     val:
       name: "LYHM_8_16"
       mode: "LRHR"
-      dataroot: "contents/LYHM_8_16"
+      dataroot: "contents/NoW_MICA_8_16"
       datatype: "img"
       l_resolution: 8
       r_resolution: 16
-      data_len: 10
+      data_len: -1
   model:
     which_model_G: "sr3"
     finetune_norm: false
@@ -112,3 +112,4 @@ wandb:
   project: "sr_vggf2"
 
 # python main.py -p train -c config/sr_sr3_VGGF2_8_16.yml
+# python main.py -p val -c config/sr_sr3_VGGF2_8_16.yml

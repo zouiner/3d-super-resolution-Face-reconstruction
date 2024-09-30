@@ -37,6 +37,7 @@ def main(cfg):
     # Setting a path for log
     cfg.path.tb_logger = os.path.join(cfg.output_dir, cfg.train.log_dir, cfg.path.tb_logger)
     cfg.path.results = os.path.join(cfg.output_dir, cfg.path.results)
+    cfg.path.results_val = os.path.join(cfg.output_dir, cfg.path.results_val)
     cfg.path.checkpoint_sr = os.path.join(cfg.output_dir, cfg.path.checkpoint_sr)
     cfg.path.checkpoint_mica = os.path.join(cfg.output_dir, cfg.path.checkpoint_mica)
     cfg.path.results_mica = os.path.join(cfg.output_dir, 'train_images_mica')
