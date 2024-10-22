@@ -31,8 +31,10 @@ cfg.path.log = "logs"
 cfg.path.tb_logger = "tb_logger"
 cfg.path.results = "results_train"
 cfg.path.results_val = "results_val"
+cfg.path.checkpoint = "checkpoint"
 cfg.path.checkpoint_sr = "checkpoint_sr"
 cfg.path.checkpoint_mica = "checkpoint_mica"
+
 
 # SR
 cfg.sr = CN()
@@ -143,6 +145,22 @@ cfg.mica.model.n_exp = 50 # add by patipol
 
 cfg.train = CN()
 cfg.train.log_dir = 'logs'
+
+cfg.train.val_freq = 10000
+cfg.train.save_checkpoint_freq = 10000
+cfg.train.print_freq = 200
+
+cfg.train.lr_update_step = 100000000
+cfg.train.log_dir = 'logs'
+cfg.train.log_steps = 100
+cfg.train.vis_dir = 'train_images_mica'
+cfg.train.vis_steps = 500
+cfg.train.write_summary = True
+cfg.train.checkpoint_steps = 1000
+cfg.train.val_vis_dir = 'val_images_mica'
+cfg.train.eval_steps = 5000
+cfg.train.reset_optimizer = False
+cfg.train.val_n_img = 5
 
 # SR
 cfg.sr.train = CN()

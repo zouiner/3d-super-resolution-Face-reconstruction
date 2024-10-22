@@ -269,9 +269,10 @@ class Trainer(object):
                     if self.global_step > n_iter + self.cfg.mica.train.max_steps:
                         break
                     
+                    
                     self.diffusion.feed_data(train_data_sub)
                     loss_sr = self.diffusion.optimize_parameters()
-                
+                    
                 
                     # log
                     if self.global_step % self.cfg.sr.train.print_freq == 0:
@@ -297,6 +298,10 @@ class Trainer(object):
                             self.cfg.sr.model.beta_schedule.val, schedule_phase='val')
                         for _,  val_data in enumerate(self.val_iter):
                             idx += 1
+                            
+                            if idx > self.cfg.train.val_n_img:
+                                break
+                            
                             self.diffusion.feed_data(val_data)
                             self.diffusion.test(continous=False)
                             visuals = self.diffusion.get_current_visuals()
@@ -397,8 +402,7 @@ class Trainer(object):
                     batch['arcface'] = arcface_array
                     
                     # reset setting of training diffusion
-                    self.diffusion.set_new_noise_schedule(
-                        self.cfg.sr.model.beta_schedule.train, schedule_phase='train')
+                    self.diffusion.set_new_noise_schedule(self.cfg.sr.model.beta_schedule.train, schedule_phase='train')
                     
                     visualizeTraining = self.global_step % self.cfg.mica.train.vis_steps == 0
                     

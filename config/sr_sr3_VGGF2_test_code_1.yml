@@ -1,11 +1,10 @@
 name: "sr_sr3_VGGF2_test_update_mica_arcface_300_imgs"
 phase: "train"
-device_id: [5,6,7]
+device_id: [2,3,4]
 
 path:
   log: "logs"
   tb_logger: "tb_logger"
-  checkpoint: "checkpoint"
   
 sr:
   pretrained_model_path: '/shared/storage/cs/staffstore/ps1510/Tutorial/Image-Super-Resolution-via-Iterative-Refinement/experiments/sr_vggf2_8_16_ntime_100_240814_141652/checkpoint/I1520000_E8'
@@ -24,7 +23,7 @@ sr:
     val:
       name: "LYHM_8_16"
       mode: "LRHR"
-      dataroot: "contents/LYHM_8_16"
+      dataroot: "contents/NoW_MICA_8_16"
       datatype: "img"
       l_resolution: 8
       r_resolution: 16
@@ -109,4 +108,4 @@ mica:
 wandb:
   project: "sr_vggf2"
 
-# python main_temp.py -p train -c config/sr_sr3_VGGF2_test_code.yml
+# python main_temp.py -p val -c config/sr_sr3_VGGF2_test_code_1.yml
