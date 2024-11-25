@@ -235,5 +235,5 @@ if __name__ == '__main__':
 # Resize to get 16×16 LR_IMGS and 128×128 HR_IMGS, then prepare 128×128 Fake SR_IMGS by bicubic interpolation
 # python data/prepare_data.py  --path /shared/storage/cs/staffstore/ps1510/Tutorial/Dataset/Now_benchmark/Validation_image  --out /shared/storage/cs/staffstore/ps1510/Tutorial/Image-Super-Resolution-via-Iterative-Refinement/contents/NoW --size 32,128 -od
 # python data/prepare_data.py  --path /shared/storage/cs/staffstore/ps1510/Tutorial/Dataset/VGG-Face2/DECA_setting/train_all  --out /shared/storage/cs/staffstore/ps1510/Tutorial/Image-Super-Resolution-via-Iterative-Refinement/contents/vgg_face2_train --size 8,16 -od
-# python datasets/tool/prepare_data.py  --path /shared/storage/cs/staffstore/ps1510/Tutorial/Dataset/LYHM_all --out /shared/storage/cs/staffstore/ps1510/Tutorial/3d-super-resolution-Face-reconstruction/contents/LYHM --size 16,64 -od
+# python datasets/tool/prepare_data.py  --path /shared/storage/cs/staffstore/ps1510/Tutorial/Dataset/LYHM_all --out /shared/storage/cs/staffstore/ps1510/Tutorial/3d-super-resolution-Face-reconstruction/contents/LYHM --size 8,128 -od
 # export CUDA_VISIBLE_DEVICES=1

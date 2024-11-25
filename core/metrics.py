@@ -4,6 +4,7 @@ import numpy as np
 import cv2
 from torchvision.utils import make_grid
 import torch
+import torch.nn.functional as F
 
 
 def tensor2img(tensor, out_type=np.uint8, min_max=(-1, 1)):
@@ -33,6 +34,14 @@ def tensor2img(tensor, out_type=np.uint8, min_max=(-1, 1)):
         img_np = (img_np * 255.0).round()
         # Important. Unlike matlab, numpy.unit8() WILL NOT round by default.
     return img_np.astype(out_type)
+
+def tensor2tensor_img(tensor, min_max=(-1, 1), size = False):
+    if size:
+        tensor = F.interpolate(tensor.unsqueeze(0), size=(size, size), mode='bilinear', align_corners=False)
+    tensor = tensor.float().cpu().clamp_(*min_max)  # clamp
+    tensor = (tensor - min_max[0]) / \
+        (min_max[1] - min_max[0])  # to range [0,1]
+    return tensor.squeeze(0)
 
 
 def save_img(img, img_path, mode='RGB'):

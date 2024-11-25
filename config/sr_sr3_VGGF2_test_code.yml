@@ -1,6 +1,6 @@
-name: "sr_sr3_VGGF2_test_update_mica_arcface_300_imgs"
+name: "sr_sr3_VGGF2_8_16_n2n"
 phase: "train"
-device_id: [5,6,7]
+device_id: [1,2,3]
 
 path:
   log: "logs"
@@ -20,11 +20,11 @@ sr:
       batch_size: 4
       num_workers: 8
       use_shuffle: true
-      data_len: 300
+      data_len: -1
     val:
       name: "LYHM_8_16"
       mode: "LRHR"
-      dataroot: "contents/LYHM_8_16"
+      dataroot: "contents/NoW_MICA_8_16"
       datatype: "img"
       l_resolution: 8
       r_resolution: 16
@@ -95,7 +95,7 @@ mica:
     weight_decay: 2e-4
     use_mask: True
     reset_optimizer: False
-    max_steps: 160000
+    max_steps: 200000
     log_steps: 50
     val_steps: 100 #300
     vis_steps: 100 #1200
@@ -110,3 +110,4 @@ wandb:
   project: "sr_vggf2"
 
 # python main_temp.py -p train -c config/sr_sr3_VGGF2_test_code.yml
+# python main_temp.py -p val -c config/sr_sr3_VGGF2_test_code.yml
