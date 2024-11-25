@@ -1,32 +1,33 @@
-name: "sr_sr3_VGGF2_test_update_mica_arcface_300_imgs"
+name: "sr_sr3_VGGF2_8_128_n2n"
 phase: "train"
-device_id: [2,3,4]
+device_id: [2,3,4,5,6,7]
 
 path:
   log: "logs"
   tb_logger: "tb_logger"
+  checkpoint: "checkpoint"
   
 sr:
   pretrained_model_path: '/shared/storage/cs/staffstore/ps1510/Tutorial/Image-Super-Resolution-via-Iterative-Refinement/experiments/sr_vggf2_8_16_ntime_100_240814_141652/checkpoint/I1520000_E8'
   datasets:
     train:
-      name: "LYHM_8_16"
+      name: "LYHM_8_128"
       mode: "HR"
-      dataroot: "contents/LYHM_8_16"
+      dataroot: "contents/LYHM_8_128"
       datatype: "img"
       l_resolution: 8
-      r_resolution: 16
+      r_resolution: 128
       batch_size: 4
       num_workers: 8
       use_shuffle: true
-      data_len: 300
+      data_len: -1
     val:
-      name: "LYHM_8_16"
+      name: "NoW_8_128"
       mode: "LRHR"
-      dataroot: "contents/NoW_MICA_8_16"
+      dataroot: "contents/NoW_MICA_8_128"
       datatype: "img"
       l_resolution: 8
-      r_resolution: 16
+      r_resolution: 128
       data_len: -1
   model:
     which_model_G: "sr3"
@@ -48,12 +49,12 @@ sr:
     beta_schedule:
       train:
         schedule: "linear"
-        n_timestep: 100
+        n_timestep: 1000
         linear_start: 0.000001
         linear_end: 0.01
       val:
         schedule: "linear"
-        n_timestep: 100
+        n_timestep: 1000
         linear_start: 0.000001
         linear_end: 0.01
     diffusion:
@@ -81,7 +82,7 @@ mica:
       n_shape: 300
       name: 'mica'
   datasets:
-    root: '/shared/storage/cs/staffstore/ps1510/Tutorial/3d-super-resolution-Face-reconstruction/datasets/arcface'
+    root: '/shared/storage/cs/staffstore/ps1510/Tutorial/3d-super-resolution-Face-reconstruction/datasets/temp_arcface'
     training_data: [ 'LYHM' ]
     eval_data: [ 'LYHM' ]
     dataset_path: 'contents/'
@@ -94,7 +95,7 @@ mica:
     weight_decay: 2e-4
     use_mask: True
     reset_optimizer: False
-    max_steps: 160000
+    max_steps: 200000
     log_steps: 50
     val_steps: 100 #300
     vis_steps: 100 #1200
@@ -108,4 +109,5 @@ mica:
 wandb:
   project: "sr_vggf2"
 
-# python main_temp.py -p val -c config/sr_sr3_VGGF2_test_code_1.yml
+# python main_temp.py -p train -c config/sr_sr3_VGGF2_8_128.yml
+# python main_temp.py -p val -c config/sr_sr3_VGGF2_8_128.yml

@@ -78,36 +78,6 @@ class ThreeDSuperResolutionModel(BaseModel):
             self.arcface = Arcface(pretrained_path=pretrained_path).to(self.device)
         
         
-        
-            
-    def save_model(self):
-        # sr
-        checkpoint_dir = self.cfg['path']['checkpoint_sr']
-        if not os.path.exists(checkpoint_dir):
-            os.makedirs(checkpoint_dir)
-        gen_path = os.path.join(
-            self.cfg['path']['checkpoint_sr'], 'I{}_E{}_gen.pth'.format(iter_step, epoch))
-        cfg_path = os.path.join(
-            self.cfg['path']['checkpoint_sr'], 'I{}_E{}_opt.pth'.format(iter_step, epoch))
-        # gen
-        network = self.netG
-        if isinstance(self.netG, nn.DataParallel):
-            network = network.module
-        state_dict = network.state_dict()
-        for key, param in state_dict.items():
-            state_dict[key] = param.cpu()
-        torch.save(state_dict, gen_path)
-        # opt
-        opt_state = {'epoch': epoch, 'iter': iter_step,
-                     'scheduler': None, 'optimizer': None}
-        opt_state['optimizer'] = self.optG.state_dict()
-        torch.save(opt_state, opt_path)
-
-        logger.info(
-            '[SR] Saved model in [{:s}] ...'.format(gen_path))
-        
-        # mica
-        
     # --------------------------- computing fn ----------------------------
     
     def feed_data(self, data):
@@ -129,6 +99,28 @@ class ThreeDSuperResolutionModel(BaseModel):
         # Convert back to image format
         enhanced_images = self.postprocess_data(enhanced_images)
         return enhanced_images
+    
+    def create_tensor_blob(self, images, input_mean=127.5, input_std=127.5, size=(112, 112), swapRB=True):
+        """
+        images: tensor of shape (3, H, W), assumed to be in range [0, 1]
+        input_mean: mean value for normalization
+        input_std: standard deviation for normalization
+        size: target size for resizing (width, height)
+        swapRB: swap the Red and Blue channels (if True, swap channels)
+        """
+
+        # Normalize: (image - mean) / std
+        images = (images - input_mean) / input_std
+        
+        # Resize the image using interpolation
+        resized_images = F.interpolate(images.unsqueeze(0), size=size, mode='bilinear', align_corners=False).squeeze(0)
+
+        # Swap the channels from RGB to BGR if necessary
+        if swapRB:
+            resized_images = resized_images[[2, 1, 0], :, :]  # Swap channels if needed
+        
+        return resized_images
+
 
     def create_arcface_embeddings(self, images):
         
@@ -254,16 +246,21 @@ class ThreeDSuperResolutionModel(BaseModel):
         return out_dict
 
     def test_sr(self, continous=False):
-        # sr
-        self.sr_model.eval()
-        with torch.no_grad():
-            if isinstance(self.sr_model, nn.DataParallel):
-                self.SR = self.sr_model.module.super_resolution(
-                    self.data['SR'], continous)
-            else:
-                self.SR = self.sr_model.super_resolution(
-                    self.data['SR'], continous)
-        self.sr_model.train()
+        
+        if isinstance(self.sr_model, nn.DataParallel):
+            self.SR = self.sr_model.module.super_resolution_learn(
+                self.data['SR'], continous)
+        else:
+            self.SR = self.sr_model.super_resolution_learn(
+                self.data['SR'], continous)
+            
+    def get_tensor_sr_img(self):
+        if isinstance(self.sr_model, nn.DataParallel):
+            self.SR = self.sr_model.module(self.data, sr_out = True)
+        else:
+            self.SR = self.sr_model(self.data, sr_out = True)
+        
+        return self.SR
 
     def sample(self, batch_size=1, continous=False):
         self.sr_model.eval()
@@ -362,7 +359,6 @@ class ThreeDSuperResolutionModel(BaseModel):
         self.sr_model.eval()
         self.mica_model.eval()
         self.arcface.eval()
-        
     
     # -------------------- preprocessing fn --------------------------
 
