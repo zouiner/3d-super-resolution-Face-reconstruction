@@ -29,11 +29,7 @@ cfg.output_dir = "/shared/storage/cs/staffstore/ps1510/Tutorial/3d-super-resolut
 cfg.path = CN()
 cfg.path.log = "logs"
 cfg.path.tb_logger = "tb_logger"
-cfg.path.results = "results_train"
-cfg.path.results_val = "results_val"
 cfg.path.checkpoint = "checkpoint"
-cfg.path.checkpoint_sr = "checkpoint_sr"
-cfg.path.checkpoint_mica = "checkpoint_mica"
 
 
 # SR
@@ -153,7 +149,6 @@ cfg.train.print_freq = 200
 cfg.train.lr_update_step = 100000000
 cfg.train.log_dir = 'logs'
 cfg.train.log_steps = 100
-cfg.train.vis_dir = 'train_images_mica'
 cfg.train.vis_steps = 500
 cfg.train.write_summary = True
 cfg.train.checkpoint_steps = 1000
@@ -190,13 +185,11 @@ cfg.mica.train.weight_decay = 0.0
 cfg.mica.train.lr_update_step = 100000000
 cfg.mica.train.log_dir = 'logs'
 cfg.mica.train.log_steps = 10
-cfg.mica.train.vis_dir = 'train_images_mica'
 cfg.mica.train.vis_steps = 200
 cfg.mica.train.write_summary = True
 cfg.mica.train.checkpoint_steps = 1000
 cfg.mica.train.checkpoint_epochs_steps = 2
 cfg.mica.train.val_steps = 1000
-cfg.mica.train.val_vis_dir = 'val_images_mica'
 cfg.mica.train.eval_steps = 5000
 cfg.mica.train.reset_optimizer = False
 cfg.mica.train.val_save_img = 5000

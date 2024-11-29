@@ -236,6 +236,6 @@ if __name__ == '__main__':
 # python data/data_sr/prepare_data.py  --path /shared/storage/cs/staffstore/ps1510/Tutorial/Dataset/Now_benchmark/Validation_image  --out /shared/storage/cs/staffstore/ps1510/Tutorial/Image-Super-Resolution-via-Iterative-Refinement/contents/NoW --size 32,128 -od
 # python data/data_sr/prepare_data.py  --path /shared/storage/cs/staffstore/ps1510/Tutorial/Dataset/VGG-Face2/DECA_setting/train_all  --out /shared/storage/cs/staffstore/ps1510/Tutorial/Image-Super-Resolution-via-Iterative-Refinement/contents/vgg_face2_train --size 8,16 -od
 # python data/data_sr/prepare_data.py  --path /shared/storage/cs/staffstore/ps1510/Tutorial/Dataset/VGG-Face2/DECA_setting/eval_all  --out /shared/storage/cs/staffstore/ps1510/Tutorial/Image-Super-Resolution-via-Iterative-Refinement/contents/vgg_face2_eval --size 8,16 -od
-# python data/data_sr/prepare_data.py  --path /shared/storage/cs/staffstore/ps1510/Tutorial/Dataset/LYHM_all  --out /shared/storage/cs/staffstore/ps1510/Tutorial/3d-super-resolution-Face-reconstruction/contents/LYHM --size 8,128 -od
+# python data/data_sr/prepare_data.py  --path /shared/storage/cs/staffstore/ps1510/Tutorial/Dataset/LYHM_all  --out /shared/storage/cs/staffstore/ps1510/Tutorial/3d-super-resolution-Face-reconstruction/contents/LYHM --size 16,128 -od
 
 # export CUDA_VISIBLE_DEVICES=1

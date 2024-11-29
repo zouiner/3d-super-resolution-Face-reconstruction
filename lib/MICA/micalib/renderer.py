@@ -26,7 +26,7 @@ from pytorch3d.renderer import (
 
 
 class MeshShapeRenderer(nn.Module):
-    def __init__(self, obj_filename):
+    def __init__(self, obj_filename, device):
         super().__init__()
 
         verts, faces, aux = load_obj(obj_filename)
@@ -34,7 +34,7 @@ class MeshShapeRenderer(nn.Module):
         self.register_buffer('faces', faces)
 
         R, T = look_at_view_transform(2.7, 10.0, 10.0)
-        self.cameras = FoVPerspectiveCameras(device='cuda:0', R=R, T=T, fov=6)
+        self.cameras = FoVPerspectiveCameras(device= device, R=R, T=T, fov=6)
         raster_settings = RasterizationSettings(
             image_size=512,
             blur_radius=0.0,
@@ -43,7 +43,7 @@ class MeshShapeRenderer(nn.Module):
         )
 
         lights = pytorch3d.renderer.DirectionalLights(
-            device='cuda:0',
+            device= device,
             direction=((0, 0, 1),),
             ambient_color=((0.4, 0.4, 0.4),),
             diffuse_color=((0.35, 0.35, 0.35),),
@@ -51,7 +51,7 @@ class MeshShapeRenderer(nn.Module):
 
         self.renderer = MeshRenderer(
             rasterizer=MeshRasterizer(cameras=self.cameras, raster_settings=raster_settings),
-            shader=SoftPhongShader(device='cuda:0', cameras=self.cameras, lights=lights)
+            shader=SoftPhongShader(device= device, cameras=self.cameras, lights=lights)
         )
 
     def render_mesh(self, vertices, faces=None, verts_rgb=None):

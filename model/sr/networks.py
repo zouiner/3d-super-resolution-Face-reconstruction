@@ -2,6 +2,7 @@ import functools
 import logging
 import torch
 import torch.nn as nn
+from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.nn import init
 from torch.nn import modules
 logger = logging.getLogger('base')
@@ -80,7 +81,7 @@ def init_weights(net, init_type='kaiming', scale=1, std=0.02):
 
 
 # Generator
-def define_G(opt):
+def define_G(opt, device, rank):
     model_opt = opt['sr']['model']
     if model_opt['which_model_G'] == 'ddpm':
         from .ddpm_modules import diffusion, unet
@@ -112,5 +113,6 @@ def define_G(opt):
         init_weights(netG, init_type='orthogonal')
     if opt['gpu_ids'] and opt['distributed']:
         assert torch.cuda.is_available()
-        netG = nn.DataParallel(netG)
+        # netG = nn.DataParallel(netG)
+        netG = DDP(netG.to(device), device_ids=[rank], output_device=rank)
     return netG

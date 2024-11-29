@@ -1,13 +1,11 @@
-name: "sr_vggf2_8_16_n_100_20240924_compute_arcface"
+name: "sr_vggf2_8_16_n_100_20241126"
 phase: "train"
 device_id: [0,1,2]
 
 path:
   log: "logs"
   tb_logger: "tb_logger"
-  results: "results"
-  checkpoint_sr: "checkpoint_sr"
-  checkpoint_mica: "checkpoint_mica"
+  checkpoint: "checkpoint"
   
 sr:
   pretrained_model_path: '/shared/storage/cs/staffstore/ps1510/Tutorial/Image-Super-Resolution-via-Iterative-Refinement/experiments/sr_vggf2_8_16_ntime_100_240814_141652/checkpoint/I1520000_E8'
@@ -111,5 +109,5 @@ mica:
 wandb:
   project: "sr_vggf2"
 
-# python main.py -p train -c config/sr_sr3_VGGF2_8_16.yml
-# python main.py -p val -c config/sr_sr3_VGGF2_8_16.yml
+# python main_temp.py -p train -c config/sr_sr3_VGGF2_8_16.yml
+# python main_temp.py -p val -c config/sr_sr3_VGGF2_8_16.yml

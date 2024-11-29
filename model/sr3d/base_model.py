@@ -45,13 +45,12 @@ class BaseModel(nn.Module):
         print(f"Loaded pretrained weights from {weights_path}")
 
     def set_device(self, x):
-        if len(self.device) > 1:
-            device = self.device[0]
-        else:
-            device = self.device
+        device = self.device
         if isinstance(x, dict):
             for key, item in x.items():
                 try:
+                    if key in ['HR', 'Index']:
+                        continue
                     if item is not None:
                         x[key] = item.to(device)
                 except:
@@ -67,18 +66,18 @@ class BaseModel(nn.Module):
     # MICA
     
     def create_weights(self):
-        if len(self.device) > 1:
-            self.vertices_mask = self.masking.get_weights_per_vertex().to(self.device[0])
-            self.triangle_mask = self.masking.get_weights_per_triangle().to(self.device[0])
+        if torch.cuda.device_count() > 1:
+            self.vertices_mask = self.masking.get_weights_per_vertex().to([self.device][0])
+            self.triangle_mask = self.masking.get_weights_per_triangle().to([self.device][0])
         else:
             self.vertices_mask = self.masking.get_weights_per_vertex().to(self.device)
             self.triangle_mask = self.masking.get_weights_per_triangle().to(self.device)
 
     def create_flame(self, model_cfg):
         self.flame = FLAME(model_cfg)
-        if len(self.device) > 1:
-            self.flame = torch.nn.DataParallel(self.flame, device_ids=self.device)
-            self.flame = self.flame.to(self.device[0])
+        if torch.cuda.device_count() > 1:
+            self.flame = torch.nn.DataParallel(self.flame, device_ids=[self.device])
+            self.flame = self.flame.to([self.device][0])
             self.flame = self.flame.module
         else:
             self.flame.to(self.device)
@@ -92,9 +91,9 @@ class BaseModel(nn.Module):
         self.verts_template_uv = None
 
     def create_weights(self):
-        if len(self.device) > 1:
-            self.vertices_mask = self.masking.get_weights_per_vertex().to(self.device[0])
-            self.triangle_mask = self.masking.get_weights_per_triangle().to(self.device[0])
+        if torch.cuda.device_count() > 1:
+            self.vertices_mask = self.masking.get_weights_per_vertex().to([self.device][0])
+            self.triangle_mask = self.masking.get_weights_per_triangle().to([self.device][0])
         else:
             self.vertices_mask = self.masking.get_weights_per_vertex().to(self.device)
             self.triangle_mask = self.masking.get_weights_per_triangle().to(self.device)

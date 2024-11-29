@@ -53,9 +53,11 @@ def process_images_in_folder(input_folder, output_folder):
                 process_and_save_npy(image_path, output_npy_path, output_image_path)
 
 # Example usage
-input_folder = '/shared/storage/cs/staffstore/ps1510/Tutorial/3d-super-resolution-Face-reconstruction/contents/LYHM_8_128'
-output_folder = '/shared/storage/cs/staffstore/ps1510/Tutorial/3d-super-resolution-Face-reconstruction/datasets/temp_arcface/LYHM_8_128'
+input_folder = '/shared/storage/cs/staffstore/ps1510/Tutorial/3d-super-resolution-Face-reconstruction/contents/LYHM_16_64'
+output_folder = '/shared/storage/cs/staffstore/ps1510/Tutorial/3d-super-resolution-Face-reconstruction/datasets/arcface/LYHM_16_64'
 output_folder = output_folder + '/arcface_input'
+print('Input folder: ', input_folder)
+print('Output folder: ', output_folder)
 process_images_in_folder(input_folder, output_folder)
 
 # /shared/storage/cs/staffstore/ps1510/Tutorial/Dataset/Now_benchmark/NoW_Dataset/final_release_version/face_image

@@ -115,9 +115,12 @@ class BaseDataset(Dataset, ABC):
         return valid_paths
 
     def initialize(self):
-        logger.info(f'[{self.name}] Initialization')
         image_list = f'{os.path.abspath(os.path.dirname(__file__))}/image_paths/{self.name}.npy'
-        logger.info(f'[{self.name}] Load cached file list: ' + image_list)
+        
+        if self.config.rank == 0:
+            logger.info(f'[{self.name}] Initialization')
+            logger.info(f'[{self.name}] Load cached file list: ' + image_list)
+        
         self.face_dict = np.load(image_list, allow_pickle=True).item()
         
         # sr
@@ -154,7 +157,8 @@ class BaseDataset(Dataset, ABC):
         
         self.create_new_face_dict()
         self.imagepaths = list(self.face_dict.keys())
-        logger.info(f'[Dataset {self.name}] Total {len(self.imagepaths)} actors loaded!')
+        if self.config.rank == 0:
+            logger.info(f'[Dataset {self.name}] Total {len(self.imagepaths)} actors loaded!')
         self.set_smallest_k()
     
     # Function to get the subject ID from the path

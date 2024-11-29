@@ -18,6 +18,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as Functional
+from torch.nn.parallel import DistributedDataParallel as DDP
 
 from model.mica.flame import FLAME
 
@@ -61,22 +62,28 @@ class MappingNetwork(nn.Module):
 
 
 class Generator(nn.Module):
-    def __init__(self, z_dim, map_hidden_dim, map_output_dim, hidden, model_cfg, device, regress=True):
+    def __init__(self, z_dim, map_hidden_dim, map_output_dim, hidden, model_cfg, device, rank, world_size, regress=True):
         super().__init__()
         self.device = device
         self.cfg = model_cfg
         self.regress = regress
+        self.rank = rank
+        self.world_size = world_size
 
         if self.regress:
             self.regressor = MappingNetwork(z_dim, map_hidden_dim, map_output_dim, hidden)
         self.generator = FLAME(model_cfg)
-        if len(self.device) > 1:
-            self.regressor = torch.nn.DataParallel(self.regressor, device_ids=self.device)
-            self.generator = torch.nn.DataParallel(self.generator, device_ids=self.device)
-            self.regressor = self.regressor.module
+        
+        self.regressor = DDP(self.regressor.to(self.device), device_ids=[self.rank], output_device=self.rank)
+              
+        if torch.cuda.device_count() > 1:
+            # self.regressor = torch.nn.DataParallel(self.regressor, device_ids=self.device)
+            # self.regressor = self.regressor.module
+            self.generator = torch.nn.DataParallel(self.generator, device_ids=[self.device.index])
             self.generator = self.generator.module
         else:
-            self.regressor = MappingNetwork(z_dim, map_hidden_dim, map_output_dim, hidden).to(self.device)
+            if self.regress:
+                self.regressor = self.regressor.to(self.device)
             self.generator = FLAME(model_cfg).to(self.device)
             
 

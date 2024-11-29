@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.nn.parallel import DistributedDataParallel as DDP
 import cv2
 from .base_model import BaseModel  # Import the shared base model class
 from model.sr.networks import define_G  # Import your super-resolution model from network.py
@@ -14,20 +15,24 @@ from loguru import logger
 input_std = 127.5
 input_mean = 127.5
 
+
 class ThreeDSuperResolutionModel(BaseModel):
-    def __init__(self, cfg, device='cuda', freeze_sr=False, tag='MICA'):
-        super(ThreeDSuperResolutionModel, self).__init__(cfg, tag)
+    def __init__(self, cfg, rank, world_size, device='cuda', freeze_sr=False, tag='MICA'):
+        super(ThreeDSuperResolutionModel, self).__init__( cfg, tag)
         
         self.cfg = cfg
-        self.device = device
+        self.device = torch.device(f'cuda:{rank}')
+        self.rank = rank
+        self.world_size = world_size
         
         # Initialize the super-resolution model
         self.load_super_resolution_model(self.cfg)
         # Initialize the MICA model (FLAME-based generator)
+        
         self.load_mica_model(self.cfg)
         
         self.initialize()
-        self.render = MeshShapeRenderer(obj_filename=self.cfg.mica.model.topology_path)
+        self.render = MeshShapeRenderer(obj_filename=self.cfg.mica.model.topology_path, device= self.device)
 
         # Optionally freeze the super-resolution model's parameters
         if freeze_sr:
@@ -41,12 +46,10 @@ class ThreeDSuperResolutionModel(BaseModel):
         Load the super-resolution model using the configuration provided.
         This will use the define_G function from network.py.
         """
-        self.sr_model = define_G(sr_model_config)
+        self.sr_model = define_G(sr_model_config, self.device, self.rank)
         self.schedule_phase = None
         
-        if len(self.device) > 1:
-            self.sr_model = nn.DataParallel(self.sr_model, device_ids=self.device)
-            self.sr_model = self.sr_model.cuda().module
+        # self.sr_model = DDP(self.sr_model.to(self.device), device_ids=[self.rank], output_device=self.rank)
         
 
     def load_mica_model(self, mica_model_config):
@@ -66,16 +69,14 @@ class ThreeDSuperResolutionModel(BaseModel):
             map_output_dim = mica_model_config['n_shape'], 
             hidden = mica_model_config['mapping_layers'], 
             model_cfg = mica_model_config, 
-            device = self.device
+            device = self.device,
+            rank = self.rank,
+            world_size = self.world_size
         )
         
-        if len(self.device) > 1:
-            self.arcface = torch.nn.DataParallel(self.arcface, device_ids=self.device)
-            self.arcface = self.arcface.cuda().module
-            self.mica_model = torch.nn.DataParallel(self.mica_model, device_ids=self.device)
-            self.mica_model = self.mica_model.cuda().module
-        else:
-            self.arcface = Arcface(pretrained_path=pretrained_path).to(self.device)
+        
+        self.arcface = DDP(self.arcface.to(self.device), device_ids=[self.rank], output_device=self.rank)
+        self.mica_model = DDP(self.mica_model.to(self.device), device_ids=[self.rank], output_device=self.rank)
         
         
     # --------------------------- computing fn ----------------------------
@@ -142,10 +143,7 @@ class ThreeDSuperResolutionModel(BaseModel):
         if not self.testing:
             flame = codedict['flame']
             shapecode = flame['shape_params'].view(-1, flame['shape_params'].shape[2])
-            if len(self.device) > 1:
-                shapecode = shapecode.to(self.device[0])[:, :self.cfg.mica.model.n_shape]
-            else:
-                shapecode = shapecode.to(self.device)[:, :self.cfg.mica.model.n_shape]
+            shapecode = shapecode.to(self.device)[:, :self.cfg.mica.model.n_shape]
             with torch.no_grad():
                 flame_verts_shape, _, _ = self.flame(shape_params=shapecode)
 
@@ -204,11 +202,11 @@ class ThreeDSuperResolutionModel(BaseModel):
     def training_MICA(self, batch, current_epoch = 0):
         self.mica_model.train() # loop here!!
 
-        images = batch['image'].to(self.device[0]) # !!take a look!! for multi gpu
+        images = batch['image']
         images = images.view(-1, images.shape[-3], images.shape[-2], images.shape[-1])
         flame = batch['flame']
         arcface = batch['arcface']
-        arcface = arcface.view(-1, arcface.shape[-3], arcface.shape[-2], arcface.shape[-1]).to(self.device[0]) # !!take a look!! for multi gpu
+        arcface = arcface.view(-1, arcface.shape[-3], arcface.shape[-2], arcface.shape[-1])
 
         inputs = {
             'images': images,
@@ -247,7 +245,7 @@ class ThreeDSuperResolutionModel(BaseModel):
 
     def test_sr(self, continous=False):
         
-        if isinstance(self.sr_model, nn.DataParallel):
+        if isinstance(self.sr_model, (torch.nn.parallel.DataParallel, torch.nn.parallel.DistributedDataParallel)):
             self.SR = self.sr_model.module.super_resolution_learn(
                 self.data['SR'], continous)
         else:
@@ -255,34 +253,32 @@ class ThreeDSuperResolutionModel(BaseModel):
                 self.data['SR'], continous)
             
     def get_tensor_sr_img(self):
-        if isinstance(self.sr_model, nn.DataParallel):
-            self.SR = self.sr_model.module(self.data, sr_out = True)
-        else:
-            self.SR = self.sr_model(self.data, sr_out = True)
+        
+        self.SR = self.sr_model(self.data, sr_out = True)
         
         return self.SR
 
     def sample(self, batch_size=1, continous=False):
         self.sr_model.eval()
         with torch.no_grad():
-            if isinstance(self.sr_model, nn.DataParallel):
+            if isinstance(self.sr_model, (torch.nn.parallel.DataParallel, torch.nn.parallel.DistributedDataParallel)):
                 self.SR = self.sr_model.module.sample(batch_size, continous)
             else:
                 self.SR = self.sr_model.sample(batch_size, continous)
         self.sr_model.train()
 
     def set_loss(self):
-        if isinstance(self.sr_model, nn.DataParallel):
-            self.sr_model.module.set_loss(self.device[0])
+        if isinstance(self.sr_model, (torch.nn.parallel.DataParallel, torch.nn.parallel.DistributedDataParallel)):
+            self.sr_model.module.set_loss(self.device)
         else:
             self.sr_model.set_loss(self.device)
 
     def set_new_noise_schedule(self, schedule_opt, schedule_phase='train'):
         if self.schedule_phase is None or self.schedule_phase != schedule_phase:
             self.schedule_phase = schedule_phase
-            if isinstance(self.sr_model, nn.DataParallel):
+            if isinstance(self.sr_model, (torch.nn.parallel.DataParallel, torch.nn.parallel.DistributedDataParallel)):
                 self.sr_model.module.set_new_noise_schedule(
-                    schedule_opt, self.device[0])
+                    schedule_opt, self.device)
             else:
                 self.sr_model.set_new_noise_schedule(schedule_opt, self.device)
 
@@ -374,3 +370,23 @@ class ThreeDSuperResolutionModel(BaseModel):
                 dict_a[key] = train_data[key]
         
         return dict_a
+    
+    def move_to_device(self, data, device):
+        if isinstance(data, torch.Tensor):
+            # Move tensor to the specified device
+            return data.to(device)
+        elif isinstance(data, list):
+            # Convert list to tensor only if it contains numeric data
+            try:
+                return torch.tensor(data, device=device)
+            except ValueError:
+                return data  # Return the list unchanged if it can't be converted
+        elif isinstance(data, dict):
+            # Recursively process dictionaries
+            return {key: self.move_to_device(value, device) for key, value in data.items()}
+        elif isinstance(data, str):
+            # Leave strings unchanged
+            return data
+        else:
+            # Return other data types unchanged (e.g., None, int, float)
+            return data
