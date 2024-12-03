@@ -1,6 +1,6 @@
 name: "sr_sr3_VGGF2_8_128_n2n"
 phase: "train"
-device_id: [2,3,4,5,6,0,1]
+device_id: [0,1]
 
 path:
   log: "logs"
@@ -8,7 +8,7 @@ path:
   checkpoint: "checkpoint"
   
 sr:
-  pretrained_model_path: '/shared/storage/cs/staffstore/ps1510/Tutorial/Image-Super-Resolution-via-Iterative-Refinement/experiments/sr_vggf2_8_128_test_n_1000_241106_014717/checkpoint/I1640000_E9'
+  pretrained_model_path: '/users/ps1510/scratch/Programs/3d-super-resolution-Face-reconstruction/sr_pretrained_model/8_128/I1640000_E9'
   datasets:
     train:
       name: "LYHM_8_128"
@@ -17,7 +17,7 @@ sr:
       datatype: "img"
       l_resolution: 8
       r_resolution: 128
-      batch_size: 4
+      batch_size: 2
       num_workers: 0
       use_shuffle: true
       data_len: -1
@@ -64,7 +64,7 @@ sr:
   train:
     n_iter: 1640000 # 4000000 # !! Check the pretrained model of SR
     val_freq: 10000
-    save_checkpoint_freq: 1000
+    save_checkpoint_freq: 2000
     print_freq: 200
     optimizer:
       type: "adam"
@@ -82,12 +82,12 @@ mica:
       n_shape: 300
       name: 'mica'
   datasets:
-    root: '/shared/storage/cs/staffstore/ps1510/Tutorial/3d-super-resolution-Face-reconstruction/datasets/temp_arcface'
+    root: '/users/ps1510/scratch/Programs/3d-super-resolution-Face-reconstruction/datasets/arcface'
     training_data: [ 'LYHM' ]
     eval_data: [ 'LYHM' ]
     dataset_path: 'contents/'
     num_workers: 0
-    batch_size: 2
+    batch_size: 1
     K: 2
   train:
     lr: 1e-5
@@ -97,11 +97,11 @@ mica:
     reset_optimizer: False
     max_steps: 200000
     log_steps: 50
-    val_steps: 100 #300
-    vis_steps: 100 #1200
-    val_save_img: 300 #1200
-    checkpoint_steps: 150 #1000
-    checkpoint_epochs_steps: 1000 #10000
+    val_steps: 300 #300
+    vis_steps: 1200 #1200
+    val_save_img: 1200 #1200
+    checkpoint_steps: 1000 #1000
+    checkpoint_epochs_steps: 10000 #10000
     arcface_new: True
 
 # -------------------------------------------------------------------------
@@ -111,3 +111,4 @@ wandb:
 
 # python main_temp.py -p train -c config/sr_sr3_VGGF2_8_128.yml
 # python main_temp.py -p val -c config/sr_sr3_VGGF2_8_128.yml
+# python -m debugpy --listen 0.0.0.0:5678 --wait-for-client main_temp.py -p train -c config/sr_sr3_VGGF2_8_128.yml

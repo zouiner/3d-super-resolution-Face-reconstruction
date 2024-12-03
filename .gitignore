@@ -1,5 +1,6 @@
 # Ignore compiled files
 *.pyc
+*.sh
 
 # Ignore directories
 Output/*
@@ -12,6 +13,7 @@ data/pretrained
 datasets/LYHM/
 datasets/arcface
 datasets/temp_arcface
+sr_pretrained_model/
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

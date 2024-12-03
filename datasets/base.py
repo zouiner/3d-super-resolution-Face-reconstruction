@@ -37,8 +37,7 @@ import cv2
 from PIL import Image
 
 
-lmk_folder = '/shared/storage/cs/staffstore/ps1510/Work/TAP2-2/results/lmk_LYHM/arcface_mymodel/lmk'
-ori_path = '/shared/storage/cs/staffstore/ps1510/Tutorial/3d-super-resolution-Face-reconstruction/datasets/arcface/LYHM/arcface_input'
+ori_path = '/users/ps1510/scratch/Programs/3d-super-resolution-Face-reconstruction/datasets/arcface/LYHM/arcface_input'
 
 class BaseDataset(Dataset, ABC):
     def __init__(self, name, config, device, isEval, need_LR=False, split='train'):

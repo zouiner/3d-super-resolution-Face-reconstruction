@@ -99,7 +99,8 @@ if __name__ == '__main__':
     os.environ['CUDA_VISIBLE_DEVICES'] = gpu_list
     print('export CUDA_VISIBLE_DEVICES=' + gpu_list)
 
-    world_size = len(cfg.device_id)  # Number of GPUs
+    # world_size = len(cfg.device_id)  # Number of GPUs
+    world_size = torch.cuda.device_count()
     
     mp.spawn(main, args=(world_size, cfg), nprocs=world_size, join=True)
 

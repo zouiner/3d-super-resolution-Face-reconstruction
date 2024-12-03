@@ -176,30 +176,24 @@ class Trainer(object):
         if load_path and os.path.exists(load_path):
             if self.rank == 0:
                 logger.info(f'Loading combined checkpoint from [{load_path}]')
-            checkpoint = torch.load(load_path, map_location='cpu')
-            
-            # Load SR model state
-            sr_network = self.model.sr_model
-            
-            state_dict = checkpoint['sr_model_state']
-            # Filter out unexpected keys
-            filtered_state_dict = {k: v for k, v in state_dict.items() if k in sr_network.state_dict()}
-            sr_network.load_state_dict(filtered_state_dict, strict=False)
-            
-            # Load SR optimizer state
-            self.opt_sr.load_state_dict(checkpoint['sr_optimizer_state'])
-            
-            # Load MICA model state
-            mica_network = self.model.mica_model
-            mica_network.load_state_dict(checkpoint['mica_model_state'])
-            
-            # Load MICA optimizer state
-            self.opt_mica.load_state_dict(checkpoint['mica_optimizer_state'])
-            
-            # Load scheduler state
-            self.scheduler.load_state_dict(checkpoint['scheduler_state'])
-            
+            checkpoint = torch.load(load_path, map_location=f"cuda:{self.rank}")
+
+            # Add `module.` prefix if the model is distributed
+            sr_state_dict = checkpoint['sr_model_state']
+            if isinstance(self.model.sr_model, torch.nn.parallel.DistributedDataParallel):
+                sr_state_dict = {f"module.{k}" if not k.startswith("module.") else k: v for k, v in sr_state_dict.items()}
+            unexpected_keys = sr_state_dict.keys() - self.model.sr_model.state_dict().keys()
+            self.model.sr_model.load_state_dict(sr_state_dict, strict=False)
+
+            mica_state_dict = checkpoint['mica_model_state']
+            if isinstance(self.model.mica_model, torch.nn.parallel.DistributedDataParallel):
+                mica_state_dict = {f"module.{k}" if not k.startswith("module.") else k: v for k, v in mica_state_dict.items()}
+            self.model.mica_model.load_state_dict(mica_state_dict, strict=False)
+
             # Load other states
+            self.opt_sr.load_state_dict(checkpoint['sr_optimizer_state'])
+            self.opt_mica.load_state_dict(checkpoint['mica_optimizer_state'])
+            self.scheduler.load_state_dict(checkpoint['scheduler_state'])
             self.current_epoch = checkpoint['epoch']
             self.global_step = checkpoint['global_step']
             self.batch_size_mica = checkpoint['batch_size_mica']
