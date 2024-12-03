@@ -1,10 +1,12 @@
 # Ignore compiled files
 *.pyc
+*.sh
 
 # Ignore directories
 Output/*
 env/
 contents/
+cuda_log/
 
 # data
 data/FLAME2020
