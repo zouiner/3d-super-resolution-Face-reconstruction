@@ -1,10 +1,10 @@
 import os, sys
 import torch
-import torch.nn as nn
 from torch.utils.data import DataLoader
 import numpy as np
 from time import time
 from skimage.io import imread
+from pytorch3d.io import save_ply
 import cv2
 from loguru import logger
 from datetime import datetime
@@ -29,12 +29,17 @@ import random
 from model.sr3d.model import ThreeDSuperResolutionModel
 
 # Intial Setting #
-        
 
 from datasets.creation.util import get_arcface_input
 
+os.environ['RANK'] = '0'
+os.environ['WORLD_SIZE'] = str(torch.cuda.device_count())
+os.environ['MASTER_ADDR'] = '127.0.0.1'
+os.environ['MASTER_PORT'] = '29500'
+
 input_std = 127.5
 input_mean = 127.5
+
 
 def print_info(rank):
     props = torch.cuda.get_device_properties(rank)
@@ -88,11 +93,10 @@ class Trainer(object):
         # If there are multiple devices, wrap the model with DataParallel
         if torch.cuda.device_count() > 1:
             self.model = nn.DataParallel(self.model, device_ids=self.device)
-            self.model = self.model.module
+            self.model = self.model.module.cuda()
         else:
            self.model = self.model.to(self.device)
 
-        # self.validator = Validator(self)
         self.configure_optimizers()
         self.load_checkpoint()
         
@@ -157,6 +161,11 @@ class Trainer(object):
             load_path = load_path[-1]  # Get the latest checkpoint file (the last file in the sorted list)
         else:
             load_path = None  # No files found, set to None
+            
+        if self.cfg['phase'] == 'val' and os.path.exists(os.path.join(self.cfg.output_dir,'model.tar')):
+            
+            load_path = os.path.join(self.cfg.output_dir, 'model.tar')
+
 
         if load_path and os.path.exists(load_path):
             logger.info(f'Loading combined checkpoint from [{load_path}]')
@@ -224,16 +233,25 @@ class Trainer(object):
             logger.info('No checkpoint found, starting from scratch.')
 
             
-    def save_checkpoint(self):
+    def save_checkpoint(self, checkpoint_dir = False):
         """
         Save both SR and MICA model checkpoints into one file.
         """
-        checkpoint_dir = os.path.join(self.cfg.output_dir, self.cfg['path']['checkpoint'])
-        if not os.path.exists(checkpoint_dir):
-            os.makedirs(checkpoint_dir)
         
-        # Define a single file to save the checkpoint
-        checkpoint_path = os.path.join(checkpoint_dir, f'I{self.global_step}_E{self.current_epoch}_checkpoint.pth')
+        if not checkpoint_dir:
+            checkpoint_dir = os.path.join(self.cfg.output_dir, self.cfg['path']['checkpoint'])
+            
+            # Define a single file to save the checkpoint
+            checkpoint_path = os.path.join(checkpoint_dir, f'I{self.global_step}_E{self.current_epoch}_checkpoint.pth')
+            if not os.path.exists(checkpoint_dir):
+                os.makedirs(checkpoint_dir)
+        else:
+            checkpoint_path = checkpoint_dir
+            
+            
+        
+        
+        
         
         # Prepare dictionary to hold all information
         checkpoint = {
@@ -304,22 +322,27 @@ class Trainer(object):
                     images_list = []
                     arcface_list = []
                     _sr_train_data = sr_train_data
-                    self.model.set_new_noise_schedule(self.cfg.sr.model.beta_schedule.val, schedule_phase='val') # for visual SR to fedd into mica
+                    self.model.set_new_noise_schedule(self.cfg.sr.model.beta_schedule.val, schedule_phase='train') # for visual SR to feed into mica
                     for i in range(len(train_data['SR'])):
                         for j in range(len(self.filter_and_slice_train_data(train_data, order = i)['SR'])):
                             _sr_train_data['SR'] = self.filter_and_slice_train_data(train_data, order = i)['SR'][j].unsqueeze(0)
                             _sr_train_data['HR'] = self.filter_and_slice_train_data(train_data, order = i)['HR'][j].unsqueeze(0)
                             _sr_train_data['Index'] = self.filter_and_slice_train_data(train_data, order = i)['Index'][j].unsqueeze(0)
                             self.model.feed_data(_sr_train_data)
-                            self.model.test_sr(continous=False)
+                            # self.model.test_sr(continous=False)
+                            tensor_sr = self.model.get_tensor_sr_img()
                             visuals = self.model.get_current_visuals()
                             
                             sr_img = Metrics.tensor2img(visuals['SR'])
-                            sr_up_img = (cv2.resize(sr_img, (224, 224)))
+                            # sr_up_img = (cv2.resize(sr_img, (224, 224)))
+                            temp_sr_up_img = Metrics.tensor2tensor_img(tensor_sr) * 255.0
+                            # temp_sr_up_img = Metrics.tensor2tensor_img(visuals['SR']) * 255.0
+                            
                             
                             if self.cfg.mica.train.arcface_new:
-                                temp_arcface = self.model.create_arcface_embeddings(sr_up_img)
+                                temp_arcface = self.model.create_tensor_blob(temp_sr_up_img)
                                 arcface_list.append(torch.tensor(temp_arcface))
+                            
                             
                             if visualizeTraining:
                                 savepath = os.path.join(self.cfg.output_dir, 'train_images/{}_{}'.format(self.current_epoch, self.global_step))
@@ -330,8 +353,8 @@ class Trainer(object):
                                 Metrics.save_img(hr_img, '{}/{}_{}_hr.png'.format(savepath, i, j))
                                 Metrics.save_img(inf_img, '{}/{}_{}_inf.png'.format(savepath, i, j))
                             
-                            
-                            images_list.append(sr_up_img.transpose(2,0,1)/255) # /255
+                            sr_up_img = (cv2.resize(sr_img, (224, 224)))
+                            images_list.append(sr_up_img.transpose(2,0,1)/255) # image no need to be tensor becasue mica use only arcface
                     
                     images_list = [torch.from_numpy(image) if isinstance(image, np.ndarray) else image for image in images_list]
                     images_array = torch.stack(images_list).view(train_data['image'].shape)
@@ -342,10 +365,10 @@ class Trainer(object):
                     batch['image'] = images_array
                     batch['arcface'] = arcface_array
                     
-                    self.model.set_new_noise_schedule(self.cfg.sr.model.beta_schedule.val, schedule_phase='train')
+                    # self.model.set_new_noise_schedule(self.cfg.sr.model.beta_schedule.val, schedule_phase='train')
                     
-                    self.model.feed_data(sr_train_data)
-                    inputs, opdict, encoder_output, decoder_output = self.model.training_MICA(batch, self.current_epoch)
+                    self.model.feed_data(sr_train_data.cuda())
+                    inputs, opdict, encoder_output, decoder_output = self.model.training_MICA(batch.cuda(), self.current_epoch)
                     
                     self.opt_sr.zero_grad()
                     self.opt_mica.zero_grad()
@@ -358,13 +381,14 @@ class Trainer(object):
                     loss_mica = l_mica
                     losses['L1'] = l_sr
                     
-                    self.model.sr_model.eval()
+                    # !! edit !!
+                    # self.model.sr_model.eval()
                     # self.model.arcface.eval()
-                    # all_loss = loss_mica + l_sr
-                    # gradient = torch.ones_like(all_loss)
-                    # all_loss.backward(gradient)
+                    all_loss = loss_mica + l_sr
+                    gradient = torch.ones_like(all_loss)
+                    all_loss.backward(gradient)
                     self.opt_mica.step()
-                    # self.opt_sr.step()
+                    self.opt_sr.step()
                     
                     
                     if self.global_step % self.cfg.train.log_steps == 0:
@@ -422,7 +446,8 @@ class Trainer(object):
                         visdict["images"] = input_images
 
                         savepath = os.path.join(savepath, 'train_3d.jpg')
-                        util.visualize_grid(visdict, savepath, size=512, return_gird = False)
+                        grid = util.visualize_grid(visdict, savepath, size=512)
+                        self.tb_logger.add_image('train_3d', grid, self.global_step, dataformats='HWC')
                     
                     # log
                     if self.global_step % self.cfg.train.print_freq == 0:
@@ -438,106 +463,123 @@ class Trainer(object):
                             self.wandb_logger.log_metrics(logs)
 
                     # validation
-                    if self.global_step % self.cfg.train.val_freq == 0:
-                        avg_psnr = 0.0
-                        idx = 0
-                        self.model.testing = True
-                        faces = self.model.mica_model.generator.faces_tensor.cpu()
-                        self.model.set_new_noise_schedule(
-                            self.cfg.sr.model.beta_schedule.val, schedule_phase='val')
-                        for _,  val_data in enumerate(self.val_iter):
-                            idx += 1
-                            
-                            if idx > self.cfg.train.val_n_img:
-                                break
-                            
-                            self.model.feed_data(val_data)
-                            self.model.test_sr(continous=False)
-                            visuals = self.model.get_current_visuals()
-                            sr_img = Metrics.tensor2img(visuals['SR'])  # uint8
-                            hr_img = Metrics.tensor2img(visuals['HR'])  # uint8
-                            lr_img = Metrics.tensor2img(visuals['LR'])  # uint8
-                            fake_img = Metrics.tensor2img(visuals['INF'])  # uint8
-                            
-                            # MICA
-                            sr_up_img = (cv2.resize(sr_img, (224, 224)))
-                            temp_arcface = self.model.create_arcface_embeddings(sr_up_img)
-                            temp_arcface = torch.tensor(temp_arcface).cuda()[None]
-                            
-                            sr_up_img = sr_up_img / 255.
-                            sr_up_img = sr_up_img.transpose(2, 0, 1)
-                            sr_up_img = torch.tensor(sr_up_img).cuda()[None]
-                            
-                            self.model.eval()
-                            encoder_output = self.model.encode_mica(sr_up_img, temp_arcface)
-                            opdict = self.model.decode_mica(encoder_output)
-                            meshes = opdict['pred_canonical_shape_vertices']
-                            code = opdict['pred_shape_code']
-                            lmk = self.model.flame.compute_landmarks(meshes)
-
-                            mesh = meshes[0]
-                            landmark_51 = lmk[0, 17:]
-                            landmark_7 = landmark_51[[19, 22, 25, 28, 16, 31, 37]]
-
-                            
-                            savepath = os.path.join(self.cfg.output_dir, 'val_images_mica')
-                            name = os.path.basename(val_data['path_sr'][0])[:-4]
-                            
-                            dst = Path(savepath, name)
-                            dst.mkdir(parents=True, exist_ok=True)
-                            trimesh.Trimesh(vertices=mesh.detach().cpu().numpy() * 1000.0, faces=faces, process=False).export(f'{dst}/mesh.ply')  # save in millimeters
-                            trimesh.Trimesh(vertices=mesh.detach().cpu().numpy() * 1000.0, faces=faces, process=False).export(f'{dst}/mesh.obj')
-                            np.save(f'{dst}/identity', code[0].detach().cpu().numpy())
-                            np.save(f'{dst}/kpt7', landmark_7.detach().cpu().numpy() * 1000.0)
-                            np.save(f'{dst}/kpt68', lmk.detach().cpu().numpy() * 1000.0)
-                            
-                        
-                        
-                            # generation
-                            Metrics.save_img(
-                                hr_img, '{}/{}_{}_hr.png'.format(dst, self.global_step, idx))
-                            Metrics.save_img(
-                                sr_img, '{}/{}_{}_sr.png'.format(dst, self.global_step, idx))
-                            Metrics.save_img(
-                                lr_img, '{}/{}_{}_lr.png'.format(dst, self.global_step, idx))
-                            Metrics.save_img(
-                                fake_img, '{}/{}_{}_inf.png'.format(dst, self.global_step, idx))
-                            
-                            
-                            self.tb_logger.add_image(
-                                'Iter_{}'.format(self.global_step),
-                                np.transpose(np.concatenate(
-                                    (fake_img, sr_img, hr_img), axis=1), [2, 0, 1]),
-                                idx)
-                            avg_psnr += Metrics.calculate_psnr(
-                                sr_img, hr_img)
-
-                            if self.wandb_logger:
-                                self.wandb_logger.log_image(
-                                    f'validation_{idx}', 
-                                    np.concatenate((fake_img, sr_img, hr_img), axis=1)
-                                )
+                    # if self.global_step % self.cfg.train.val_freq == 0:
+                    #     avg_psnr = 0.0
+                    #     idx = 0
+                    #     self.model.testing = True
+                    #     faces = self.model.mica_model.generator.faces_tensor.cpu()
+                    #     self.model.set_new_noise_schedule(
+                    #         self.cfg.sr.model.beta_schedule.val, schedule_phase='val')
+                    #     self.model.eval()
+                    #     with torch.no_grad():
+                    #         for _,  val_data in enumerate(self.val_iter):
+                    #             idx += 1
                                 
-                        self.model.testing = False       
+                    #             if idx > self.cfg.train.val_n_img:
+                    #                 break
+                                
+                    #             self.model.feed_data(val_data)
+                    #             self.model.test_sr(continous=False)
+                    #             visuals = self.model.get_current_visuals()
+                    #             sr_img = Metrics.tensor2img(visuals['SR'])  # uint8
+                    #             hr_img = Metrics.tensor2img(visuals['HR'])  # uint8
+                    #             lr_img = Metrics.tensor2img(visuals['LR'])  # uint8
+                    #             fake_img = Metrics.tensor2img(visuals['INF'])  # uint8
+                                
+                    #             # MICA
+                    #             sr_up_img = (cv2.resize(sr_img, (224, 224)))
+                    #             temp_arcface = self.model.create_arcface_embeddings(sr_up_img)
+                    #             temp_arcface = torch.tensor(temp_arcface).cuda()[None]
+                                
+                    #             sr_up_img = sr_up_img / 255.
+                    #             sr_up_img = sr_up_img.transpose(2, 0, 1)
+                    #             sr_up_img = torch.tensor(sr_up_img).cuda()[None]
+                                
+                    #             encoder_output = self.model.encode_mica(sr_up_img, temp_arcface)
+                    #             opdict = self.model.decode_mica(encoder_output)
+                    #             meshes = opdict['pred_canonical_shape_vertices']
+                    #             code = opdict['pred_shape_code']
+                    #             lmk = self.model.flame.compute_landmarks(meshes)
 
-                        avg_psnr = avg_psnr / idx
-                        # reset dataloader    
-                        self.val_iter = iter(self.val_dataloader)
+                    #             mesh = meshes[0]
+                    #             landmark_51 = lmk[0, 17:]
+                    #             landmark_7 = landmark_51[[19, 22, 25, 28, 16, 31, 37]]
+
+                                
+                    #             savepath = os.path.join(self.cfg.output_dir, 'val_images_mica', str(self.global_step))
+                    #             name = os.path.basename(val_data['path_sr'][0])[:-4]
+                                
+                    #             dst = Path(savepath, name)
+                    #             dst.mkdir(parents=True, exist_ok=True)
+                    #             trimesh.Trimesh(vertices=mesh.detach().cpu().numpy() * 1000.0, faces=faces, process=False).export(f'{dst}/mesh.ply')  # save in millimeters
+                    #             trimesh.Trimesh(vertices=mesh.detach().cpu().numpy() * 1000.0, faces=faces, process=False).export(f'{dst}/mesh.obj')
+                    #             np.save(f'{dst}/identity', code[0].detach().cpu().numpy())
+                    #             np.save(f'{dst}/kpt7', landmark_7.detach().cpu().numpy() * 1000.0)
+                    #             np.save(f'{dst}/kpt68', lmk.detach().cpu().numpy() * 1000.0)
+                                
+                    #             # visual in image
+                    #             # visual = {}
+                    #             # visual['image'] = sr_up_img
+                    #             # # Initialize a blank canvas (1, 3, 224, 224) with values in range (0,1)
+                    #             # canvas = torch.zeros((1, 3, 224, 224))
+
+                    #             # # Assuming lmk is of shape (68, 3)
+                    #             # for x, y, _ in lmk[0]:  # Ignore the z-coordinate
+                    #             #     x, y = int(x), int(y)  # Convert to int for pixel coordinates
+                    #             #     # Ensure points are within bounds
+                    #             #     if 0 <= x < canvas.shape[3] and 0 <= y < canvas.shape[2]:
+                    #             #         canvas[0, 0, y, x] = 1.0  # Set the red channel
+                    #             # visual['lmk'] = canvas
+                                
+                    #             # grid = util.visualize_grid(visual, f'{dst}/kpt68_image.png', size=512)
+                    #             # self.tb_logger.add_image('train_3d', grid, self.global_step, dataformats='HWC')
+                            
+                            
+                    #             # generation
+                    #             Metrics.save_img(
+                    #                 hr_img, '{}/{}_{}_hr.png'.format(dst, self.global_step, idx))
+                    #             Metrics.save_img(
+                    #                 sr_img, '{}/{}_{}_sr.png'.format(dst, self.global_step, idx))
+                    #             Metrics.save_img(
+                    #                 lr_img, '{}/{}_{}_lr.png'.format(dst, self.global_step, idx))
+                    #             Metrics.save_img(
+                    #                 fake_img, '{}/{}_{}_inf.png'.format(dst, self.global_step, idx))
+                                
+                                
+                    #             self.tb_logger.add_image(
+                    #                 'Iter_{}'.format(self.global_step),
+                    #                 np.transpose(np.concatenate(
+                    #                     (fake_img, sr_img, hr_img), axis=1), [2, 0, 1]),
+                    #                 idx)
+                    #             avg_psnr += Metrics.calculate_psnr(
+                    #                 sr_img, hr_img)
+
+                    #             if self.wandb_logger:
+                    #                 self.wandb_logger.log_image(
+                    #                     f'validation_{idx}', 
+                    #                     np.concatenate((fake_img, sr_img, hr_img), axis=1)
+                    #                 )
+                    #     self.model.train()     
+                    #     self.model.testing = False       
+
+                    #     avg_psnr = avg_psnr / idx
+                    #     # reset dataloader    
+                    #     self.val_iter = iter(self.val_dataloader)
                         
-                        # log
-                        logger.info('# Validation # PSNR: {:.4e}'.format(avg_psnr))
-                        logger_val = logging.getLogger('val')  # validation logger
-                        logger_val.info('<epoch:{:3d}, iter:{:8,d}> psnr: {:.4e}'.format(
-                            self.current_epoch, self.global_step, avg_psnr))
-                        # tensorboard logger
-                        self.tb_logger.add_scalar('psnr', avg_psnr, self.global_step)
+                    #     # log
+                    #     logger.info('# Validation # PSNR: {:.4e}'.format(avg_psnr))
+                    #     logger_val = logging.getLogger('val')  # validation logger
+                    #     logger_val.info('<epoch:{:3d}, iter:{:8,d}> psnr: {:.4e}'.format(
+                    #         self.current_epoch, self.global_step, avg_psnr))
+                    #     # tensorboard logger
+                    #     self.tb_logger.add_scalar('psnr', avg_psnr, self.global_step)
 
-                        if self.wandb_logger:
-                            self.wandb_logger.log_metrics({
-                                'validation/val_psnr': avg_psnr,
-                                'validation/val_step': val_step
-                            })
-                            val_step += 1
+                    #     if self.wandb_logger:
+                    #         self.wandb_logger.log_metrics({
+                    #             'validation/val_psnr': avg_psnr,
+                    #             'validation/val_step': val_step
+                    #         })
+                    #         val_step += 1
 
                     if self.global_step % self.cfg.mica.train.lr_update_step == 0:
                         self.scheduler.step() #!! ???
@@ -557,7 +599,7 @@ class Trainer(object):
                 self.train_iter = iter(self.train_dataloader)
             
             # save model
-            self.save_checkpoint(os.path.join(self.cfg.output_dir, 'model' + '.tar'))  
+            self.save_checkpoint(os.path.join(self.cfg.output_dir, 'model.tar'))  
             logger.info('End of training.')
             
         else:
@@ -592,6 +634,7 @@ class Trainer(object):
                 sr_up_img = torch.tensor(sr_up_img).cuda()[None]
                 
                 self.model.eval()
+                
                 encoder_output = self.model.encode_mica(sr_up_img, temp_arcface)
                 opdict = self.model.decode_mica(encoder_output)
                 meshes = opdict['pred_canonical_shape_vertices']
@@ -603,16 +646,32 @@ class Trainer(object):
                 landmark_7 = landmark_51[[19, 22, 25, 28, 16, 31, 37]]
 
                 
-                savepath = os.path.join(self.cfg.output_dir, 'val_images')
+                savepath = os.path.join(self.cfg.output_dir, 'val_images', str(self.global_step))
                 
                 dst = Path(savepath, name)
                 dst.mkdir(parents=True, exist_ok=True)
+                
+                # Save meshes
+                v = torch.reshape(meshes, (-1, 3))
+                scaled = v * 1000.0
+                save_ply(f'{dst}/mesh.ply', scaled.cpu(), self.model.render.faces[0].cpu())
+                
                 trimesh.Trimesh(vertices=mesh.detach().cpu().numpy() * 1000.0, faces=faces, process=False).export(f'{dst}/mesh.ply')  # save in millimeters
                 trimesh.Trimesh(vertices=mesh.detach().cpu().numpy() * 1000.0, faces=faces, process=False).export(f'{dst}/mesh.obj')
                 np.save(f'{dst}/identity', code[0].detach().cpu().numpy())
                 np.save(f'{dst}/kpt7', landmark_7.detach().cpu().numpy() * 1000.0)
                 np.save(f'{dst}/kpt68', lmk.detach().cpu().numpy() * 1000.0)
+                
+                pred = self.model.render.render_mesh(meshes)
+                
+                dict = {
+                        'pred': pred,
+                        'images': F.interpolate(sr_up_img, size=(512, 512), mode='bilinear', align_corners=False),
+                        'GT': F.interpolate(visuals['HR'], size=(512, 512), mode='bilinear', align_corners=False)
+                    }
 
+                util.visualize_grid(dict, f'{dst}/render.jpg', size=512)
+                
                 
                 Metrics.save_img(sr_img, '{}/{}_sr.png'.format(dst, name))
 
@@ -651,7 +710,7 @@ class Trainer(object):
                     'PSNR': float(avg_psnr),
                     'SSIM': float(avg_ssim)
                 })
-        
+    
     
     def evaluate_MICA(self):
         # NOW Benchmark

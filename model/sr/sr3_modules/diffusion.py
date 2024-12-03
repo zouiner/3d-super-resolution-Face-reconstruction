@@ -210,6 +210,42 @@ class GaussianDiffusion(nn.Module):
     @torch.no_grad()
     def super_resolution(self, x_in, continous=False):
         return self.p_sample_loop(x_in, continous)
+    
+    def super_resolution_learn(self, x_in, continous=False):
+        return self.p_sample_loop_learn(x_in, continous)
+    
+    def p_sample_learn(self, x, t, clip_denoised=True, condition_x=None):
+        model_mean, model_log_variance = self.p_mean_variance(
+            x=x, t=t, clip_denoised=clip_denoised, condition_x=condition_x)
+        noise = torch.randn_like(x) if t > 0 else torch.zeros_like(x)
+        return model_mean + noise * (0.5 * model_log_variance).exp()
+    
+    def p_sample_loop_learn(self, x_in, continous=False):
+        device = self.betas.device
+        sample_inter = (1 | (self.num_timesteps//10))
+        if not self.conditional:
+            shape = x_in
+            img = torch.randn(shape, device=device)
+            ret_img = img
+            # for i in tqdm(reversed(range(0, self.num_timesteps)), desc='sampling loop time step', total=self.num_timesteps):
+            for i in reversed(range(0, self.num_timesteps)):
+                img = self.p_sample_learn(img, i)
+                if i % sample_inter == 0:
+                    ret_img = torch.cat([ret_img, img], dim=0)
+        else:
+            x = x_in
+            shape = x.shape
+            img = torch.randn(shape, device=device)
+            ret_img = x
+            # for i in tqdm(reversed(range(0, self.num_timesteps)), desc='sampling loop time step', total=self.num_timesteps):
+            for i in reversed(range(0, self.num_timesteps)):
+                img = self.p_sample_learn(img, i, condition_x=x)
+                if i % sample_inter == 0:
+                    ret_img = torch.cat([ret_img, img], dim=0)
+        if continous:
+            return ret_img
+        else:
+            return ret_img[-1]
 
     def q_sample(self, x_start, continuous_sqrt_alpha_cumprod, noise=None):
         noise = default(noise, lambda: torch.randn_like(x_start))
@@ -220,7 +256,7 @@ class GaussianDiffusion(nn.Module):
             (1 - continuous_sqrt_alpha_cumprod**2).sqrt() * noise
         )
 
-    def p_losses(self, x_in, noise=None):
+    def p_losses(self, x_in, noise=None, sr_out = False):
         x_start = x_in['HR']
         [b, c, h, w] = x_start.shape
         t = np.random.randint(1, self.num_timesteps + 1)
@@ -244,8 +280,12 @@ class GaussianDiffusion(nn.Module):
             x_recon = self.denoise_fn(
                 torch.cat([x_in['SR'], x_noisy], dim=1), continuous_sqrt_alpha_cumprod)
 
-        loss = self.loss_func(noise, x_recon)
-        return loss
+        if sr_out:
+            x_output = self.super_resolution_learn(x_in['SR'])
+            return x_output
+        else:
+            loss = self.loss_func(noise, x_recon)
+            return loss
 
-    def forward(self, x, *args, **kwargs):
-        return self.p_losses(x, *args, **kwargs)
+    def forward(self, x, sr_out = False, *args, **kwargs):
+        return self.p_losses(x, sr_out = sr_out, *args, **kwargs)
