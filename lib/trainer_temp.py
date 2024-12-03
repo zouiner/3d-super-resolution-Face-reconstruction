@@ -90,7 +90,7 @@ class Trainer(object):
             self.model = nn.DataParallel(self.model, device_ids=self.device)
             self.model = self.model.module
         else:
-           self.model = self.model.to(self.device)
+           self.model = self.model.to(self.device[0])
 
         # self.validator = Validator(self)
         self.configure_optimizers()

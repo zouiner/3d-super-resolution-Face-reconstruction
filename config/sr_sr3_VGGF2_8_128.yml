@@ -1,32 +1,33 @@
-name: "sr_sr3_VGGF2_test_update_mica_arcface_300_imgs"
+name: "sr_sr3_VGGF2_8_128_n2n"
 phase: "train"
-device_id: [2,3,4]
+device_id: [0,1]
 
 path:
   log: "logs"
   tb_logger: "tb_logger"
+  checkpoint: "checkpoint"
   
 sr:
-  pretrained_model_path: '/shared/storage/cs/staffstore/ps1510/Tutorial/Image-Super-Resolution-via-Iterative-Refinement/experiments/sr_vggf2_8_16_ntime_100_240814_141652/checkpoint/I1520000_E8'
+  pretrained_model_path: '/users/ps1510/scratch/Programs/3d-super-resolution-Face-reconstruction/sr_pretrained_model/8_128/I1640000_E9'
   datasets:
     train:
-      name: "LYHM_8_16"
+      name: "LYHM_8_128"
       mode: "HR"
-      dataroot: "contents/LYHM_8_16"
+      dataroot: "contents/LYHM_8_128"
       datatype: "img"
       l_resolution: 8
-      r_resolution: 16
-      batch_size: 4
-      num_workers: 8
+      r_resolution: 128
+      batch_size: 2
+      num_workers: 0
       use_shuffle: true
-      data_len: 300
+      data_len: -1
     val:
-      name: "LYHM_8_16"
+      name: "NoW_8_128"
       mode: "LRHR"
-      dataroot: "contents/NoW_MICA_8_16"
+      dataroot: "contents/NoW_MICA_8_128"
       datatype: "img"
       l_resolution: 8
-      r_resolution: 16
+      r_resolution: 128
       data_len: -1
   model:
     which_model_G: "sr3"
@@ -48,12 +49,12 @@ sr:
     beta_schedule:
       train:
         schedule: "linear"
-        n_timestep: 100
+        n_timestep: 1000 # !! Check with the SR pretrained model
         linear_start: 0.000001
         linear_end: 0.01
       val:
         schedule: "linear"
-        n_timestep: 100
+        n_timestep: 1000 # !! Check with the SR pretrained model
         linear_start: 0.000001
         linear_end: 0.01
     diffusion:
@@ -61,9 +62,9 @@ sr:
       channels: 3
       conditional: true
   train:
-    n_iter: 1520000 # 4000000
+    n_iter: 1640000 # 4000000 # !! Check the pretrained model of SR
     val_freq: 10000
-    save_checkpoint_freq: 1000
+    save_checkpoint_freq: 2000
     print_freq: 200
     optimizer:
       type: "adam"
@@ -81,12 +82,12 @@ mica:
       n_shape: 300
       name: 'mica'
   datasets:
-    root: '/shared/storage/cs/staffstore/ps1510/Tutorial/3d-super-resolution-Face-reconstruction/datasets/arcface'
+    root: '/users/ps1510/scratch/Programs/3d-super-resolution-Face-reconstruction/datasets/arcface'
     training_data: [ 'LYHM' ]
     eval_data: [ 'LYHM' ]
     dataset_path: 'contents/'
-    num_workers: 4
-    batch_size: 2
+    num_workers: 0
+    batch_size: 1
     K: 2
   train:
     lr: 1e-5
@@ -94,13 +95,13 @@ mica:
     weight_decay: 2e-4
     use_mask: True
     reset_optimizer: False
-    max_steps: 160000
+    max_steps: 200000
     log_steps: 50
-    val_steps: 100 #300
-    vis_steps: 100 #1200
-    val_save_img: 300 #1200
-    checkpoint_steps: 150 #1000
-    checkpoint_epochs_steps: 1000 #10000
+    val_steps: 300 #300
+    vis_steps: 1200 #1200
+    val_save_img: 1200 #1200
+    checkpoint_steps: 1000 #1000
+    checkpoint_epochs_steps: 10000 #10000
     arcface_new: True
 
 # -------------------------------------------------------------------------
@@ -108,4 +109,6 @@ mica:
 wandb:
   project: "sr_vggf2"
 
-# python main_temp.py -p val -c config/sr_sr3_VGGF2_test_code_1.yml
+# python main_temp.py -p train -c config/sr_sr3_VGGF2_8_128.yml
+# python main_temp.py -p val -c config/sr_sr3_VGGF2_8_128.yml
+# python -m debugpy --listen 0.0.0.0:5678 --wait-for-client main_temp.py -p train -c config/sr_sr3_VGGF2_8_128.yml

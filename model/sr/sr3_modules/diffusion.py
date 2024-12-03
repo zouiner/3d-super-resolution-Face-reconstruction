@@ -82,6 +82,8 @@ class GaussianDiffusion(nn.Module):
             # self.set_new_noise_schedule(schedule_opt)
 
     def set_loss(self, device):
+        if len(device) == 1:
+            device = device[0]
         if self.loss_type == 'l1':
             self.loss_func = nn.L1Loss(reduction='sum').to(device)
         elif self.loss_type == 'l2':
@@ -90,6 +92,8 @@ class GaussianDiffusion(nn.Module):
             raise NotImplementedError()
 
     def set_new_noise_schedule(self, schedule_opt, device):
+        if len(device) == 1:
+            device = device[0]
         to_torch = partial(torch.tensor, dtype=torch.float32, device=device)
 
         betas = make_beta_schedule(

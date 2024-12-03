@@ -76,8 +76,8 @@ class Generator(nn.Module):
             self.regressor = self.regressor.module
             self.generator = self.generator.module
         else:
-            self.regressor = MappingNetwork(z_dim, map_hidden_dim, map_output_dim, hidden).to(self.device)
-            self.generator = FLAME(model_cfg).to(self.device)
+            self.regressor = MappingNetwork(z_dim, map_hidden_dim, map_output_dim, hidden).to(self.device[0])
+            self.generator = FLAME(model_cfg).to(self.device[0])
             
 
     def forward(self, arcface):

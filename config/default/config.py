@@ -21,7 +21,7 @@ cfg.enable_wandb = None
 cfg.log_wandb_ckpt = None
 cfg.log_eval = None
 
-cfg.output_dir = "/shared/storage/cs/staffstore/ps1510/Tutorial/3d-super-resolution-Face-reconstruction/Output"
+cfg.output_dir = "/users/ps1510/scratch/Programs/test/3d-super-resolution-Face-reconstruction/Output"
 
 # ---------------------------------------------------------------------------- #
 # Options for path
@@ -133,7 +133,7 @@ cfg.mica.model.layers = 8
 cfg.mica.model.hidden_layers_size = 256
 cfg.mica.model.mapping_layers = 3
 cfg.mica.model.use_pretrained = True
-cfg.mica.model.arcface_pretrained_model = '/shared/storage/cs/staffstore/ps1510/Tutorial/3d-super-resolution-Face-reconstruction/data/pretrained/backbone.pth'
+cfg.mica.model.arcface_pretrained_model = '/users/ps1510/scratch/Programs/3d-super-resolution-Face-reconstruction/data/pretrained/backbone.pth'
 # got from https://onedrive.live.com/?authkey=%21AFZjr283nwZHqbA&id=4A83B6B633B029CC%215582&cid=4A83B6B633B029CC
 # cfg.model.arcface_pretrained_model = '/scratch/is-rg-ncs/models_weights/arcface-torch/backbone100.pth'
 cfg.mica.model.n_pose = 6 # add by patipol
