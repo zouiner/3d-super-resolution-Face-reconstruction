@@ -5,7 +5,7 @@
 #SBATCH --ntasks=1                             # Run a single task...
 #SBATCH --cpus-per-task=1                      # ...with a single CPU
 #SBATCH --mem=16gb                             # Job memory request
-#SBATCH --time=0-01:00:00                      # Time limit (DD-HH:MM:SS)
+#SBATCH --time=3-00:00:00                      # Time limit (DD-HH:MM:SS)
 #SBATCH --output=cuda_log/cuda_job_sr3d_8_32_%j.log      # Standard output and error log
 #SBATCH --partition=gpu                        # Select the GPU nodes... (, interactive, gpu , gpuplus)  
 #SBATCH --gres=gpu:3                           # ...and the Number of GPUs
@@ -27,6 +27,6 @@ conda activate 3dsr # Your conda environment here
 # or source your .venv environment here if using venv
 
 # now run the python script
-python main_temp.py -p val -c config/sr_sr3_VGGF2_8_32.yml
+python main_temp.py -p train -c config/sr_sr3_VGGF2_8_32.yml
 
 # to run the command: sbatch run.sh
