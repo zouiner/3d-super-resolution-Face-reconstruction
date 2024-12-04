@@ -34,7 +34,7 @@ class Validator(object):
     def __init__(self, trainer):
         self.trainer = trainer
         self.device = self.trainer.device
-        self.nfc = self.trainer.nfc
+        self.nfc = self.trainer.model.mica_model
         self.cfg = deepcopy(self.trainer.cfg)
         self.device = trainer.device
         

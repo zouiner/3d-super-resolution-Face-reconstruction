@@ -86,8 +86,8 @@ mica:
     training_data: [ 'LYHM' ]
     eval_data: [ 'LYHM' ]
     dataset_path: 'contents/'
-    num_workers: 0
-    batch_size: 1
+    num_workers: 4
+    batch_size: 2
     K: 2
   train:
     lr: 1e-5
@@ -102,6 +102,7 @@ mica:
     val_save_img: 1200 #1200
     checkpoint_steps: 1000 #1000
     checkpoint_epochs_steps: 10000 #10000
+
     arcface_new: True
 
 # -------------------------------------------------------------------------
