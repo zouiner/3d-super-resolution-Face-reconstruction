@@ -358,13 +358,13 @@ class Trainer(object):
                     loss_mica = l_mica
                     losses['L1'] = l_sr
                     
-                    self.model.sr_model.eval()
+                    # self.model.sr_model.eval()
                     # self.model.arcface.eval()
-                    # all_loss = loss_mica + l_sr
-                    # gradient = torch.ones_like(all_loss)
-                    # all_loss.backward(gradient)
+                    all_loss = loss_mica + l_sr
+                    gradient = torch.ones_like(all_loss)
+                    all_loss.backward(gradient)
                     self.opt_mica.step()
-                    # self.opt_sr.step()
+                    self.opt_sr.step()
                     
                     
                     if self.global_step % self.cfg.train.log_steps == 0:
@@ -480,7 +480,7 @@ class Trainer(object):
                             landmark_7 = landmark_51[[19, 22, 25, 28, 16, 31, 37]]
 
                             
-                            savepath = os.path.join(self.cfg.output_dir, 'val_images_mica')
+                            savepath = os.path.join(self.cfg.output_dir, 'val_images_mica', '{}_{}'.format(self.current_epoch, self.global_step))
                             name = os.path.basename(val_data['path_sr'][0])[:-4]
                             
                             dst = Path(savepath, name)

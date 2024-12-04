@@ -29,11 +29,7 @@ cfg.output_dir = "/users/ps1510/scratch/Programs/test/3d-super-resolution-Face-r
 cfg.path = CN()
 cfg.path.log = "logs"
 cfg.path.tb_logger = "tb_logger"
-cfg.path.results = "results_train"
-cfg.path.results_val = "results_val"
 cfg.path.checkpoint = "checkpoint"
-cfg.path.checkpoint_sr = "checkpoint_sr"
-cfg.path.checkpoint_mica = "checkpoint_mica"
 
 
 # SR

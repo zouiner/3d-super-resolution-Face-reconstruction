@@ -1,6 +1,6 @@
 name: "sr_sr3_VGGF2_8_32_n2n"
 phase: "train"
-device_id: [0,1,2]
+device_id: [0,1]
 
 path:
   log: "logs"
@@ -97,11 +97,11 @@ mica:
     reset_optimizer: False
     max_steps: 200000
     log_steps: 50
-    val_steps: 100 #300
-    vis_steps: 100 #1200
-    val_save_img: 300 #1200
-    checkpoint_steps: 150 #1000
-    checkpoint_epochs_steps: 1000 #10000
+    val_steps: 300 #300
+    vis_steps: 1200 #1200
+    val_save_img: 1200 #1200
+    checkpoint_steps: 1000 #1000
+    checkpoint_epochs_steps: 10000 #10000
     arcface_new: True
 
 # -------------------------------------------------------------------------
