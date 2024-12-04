@@ -81,7 +81,7 @@ class BaseModel(nn.Module):
             self.flame = self.flame.to(self.device[0])
             self.flame = self.flame.module
         else:
-            self.flame.to(self.device)
+            self.flame.to(self.device[0])
         self.average_face = self.flame.v_template.clone()[None]
 
         self.flame.eval()
@@ -92,12 +92,8 @@ class BaseModel(nn.Module):
         self.verts_template_uv = None
 
     def create_weights(self):
-        if len(self.device) > 1:
-            self.vertices_mask = self.masking.get_weights_per_vertex().to(self.device[0])
-            self.triangle_mask = self.masking.get_weights_per_triangle().to(self.device[0])
-        else:
-            self.vertices_mask = self.masking.get_weights_per_vertex().to(self.device)
-            self.triangle_mask = self.masking.get_weights_per_triangle().to(self.device)
+        self.vertices_mask = self.masking.get_weights_per_vertex().to(self.device[0])
+        self.triangle_mask = self.masking.get_weights_per_triangle().to(self.device[0])
 
     def create_template(self, B):
         with torch.no_grad():

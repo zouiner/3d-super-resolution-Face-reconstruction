@@ -75,7 +75,7 @@ class ThreeDSuperResolutionModel(BaseModel):
             self.mica_model = torch.nn.DataParallel(self.mica_model, device_ids=self.device)
             self.mica_model = self.mica_model.cuda().module
         else:
-            self.arcface = Arcface(pretrained_path=pretrained_path).to(self.device)
+            self.arcface = Arcface(pretrained_path=pretrained_path).to(self.device[0])
         
         
     # --------------------------- computing fn ----------------------------

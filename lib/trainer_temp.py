@@ -95,7 +95,7 @@ class Trainer(object):
             self.model = nn.DataParallel(self.model, device_ids=self.device)
             self.model = self.model.module.cuda()
         else:
-           self.model = self.model.to(self.device)
+           self.model = self.model.to(self.device[0])
 
         self.configure_optimizers()
         self.load_checkpoint()
@@ -380,8 +380,7 @@ class Trainer(object):
                     
                     loss_mica = l_mica
                     losses['L1'] = l_sr
-                    
-                    # !! edit !!
+
                     # self.model.sr_model.eval()
                     # self.model.arcface.eval()
                     all_loss = loss_mica + l_sr
@@ -505,6 +504,7 @@ class Trainer(object):
                     #             landmark_51 = lmk[0, 17:]
                     #             landmark_7 = landmark_51[[19, 22, 25, 28, 16, 31, 37]]
 
+
                                 
                     #             savepath = os.path.join(self.cfg.output_dir, 'val_images_mica', str(self.global_step))
                     #             name = os.path.basename(val_data['path_sr'][0])[:-4]
@@ -534,7 +534,7 @@ class Trainer(object):
                     #             # grid = util.visualize_grid(visual, f'{dst}/kpt68_image.png', size=512)
                     #             # self.tb_logger.add_image('train_3d', grid, self.global_step, dataformats='HWC')
                             
-                            
+                          
                     #             # generation
                     #             Metrics.save_img(
                     #                 hr_img, '{}/{}_{}_hr.png'.format(dst, self.global_step, idx))

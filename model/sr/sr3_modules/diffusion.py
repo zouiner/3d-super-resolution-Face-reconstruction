@@ -90,6 +90,8 @@ class GaussianDiffusion(nn.Module):
             raise NotImplementedError()
 
     def set_new_noise_schedule(self, schedule_opt, device):
+        if device != 0:
+            device = device[0]
         to_torch = partial(torch.tensor, dtype=torch.float32, device=device)
 
         betas = make_beta_schedule(
