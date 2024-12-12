@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.nn.parallel import DistributedDataParallel as DDP
 import cv2
 from .base_model import BaseModel  # Import the shared base model class
 from model.sr.networks import define_G  # Import your super-resolution model from network.py
@@ -14,9 +15,10 @@ from loguru import logger
 input_std = 127.5
 input_mean = 127.5
 
+
 class ThreeDSuperResolutionModel(BaseModel):
     def __init__(self, cfg, device='cuda', freeze_sr=False, tag='MICA'):
-        super(ThreeDSuperResolutionModel, self).__init__(cfg, tag)
+        super(ThreeDSuperResolutionModel, self).__init__( cfg, tag)
         
         self.cfg = cfg
         self.device = device
@@ -24,10 +26,11 @@ class ThreeDSuperResolutionModel(BaseModel):
         # Initialize the super-resolution model
         self.load_super_resolution_model(self.cfg)
         # Initialize the MICA model (FLAME-based generator)
+        
         self.load_mica_model(self.cfg)
         
         self.initialize()
-        self.render = MeshShapeRenderer(obj_filename=self.cfg.mica.model.topology_path)
+        self.render = MeshShapeRenderer(obj_filename=self.cfg.mica.model.topology_path).cuda()
 
         # Optionally freeze the super-resolution model's parameters
         if freeze_sr:
@@ -47,6 +50,8 @@ class ThreeDSuperResolutionModel(BaseModel):
         if len(self.device) > 1:
             self.sr_model = nn.DataParallel(self.sr_model, device_ids=self.device)
             self.sr_model = self.sr_model.cuda().module
+        
+        self.sr_model = self.sr_model.cuda()
         
 
     def load_mica_model(self, mica_model_config):
@@ -71,43 +76,13 @@ class ThreeDSuperResolutionModel(BaseModel):
         
         if len(self.device) > 1:
             self.arcface = torch.nn.DataParallel(self.arcface, device_ids=self.device)
-            self.arcface = self.arcface.module
+            self.arcface = self.arcface.cuda().module
             self.mica_model = torch.nn.DataParallel(self.mica_model, device_ids=self.device)
-            self.mica_model = self.mica_model.module
+            self.mica_model = self.mica_model.cuda().module
+        else:
+            self.arcface = Arcface(pretrained_path=pretrained_path).cuda()
+            self.mica_model = self.mica_model.cuda()
         
-        self.arcface = self.arcface.cuda()
-        self.mica_model = self.mica_model.cuda()
-        
-        
-        
-            
-    def save_model(self):
-        # sr
-        checkpoint_dir = self.cfg['path']['checkpoint_sr']
-        if not os.path.exists(checkpoint_dir):
-            os.makedirs(checkpoint_dir)
-        gen_path = os.path.join(
-            self.cfg['path']['checkpoint_sr'], 'I{}_E{}_gen.pth'.format(iter_step, epoch))
-        cfg_path = os.path.join(
-            self.cfg['path']['checkpoint_sr'], 'I{}_E{}_opt.pth'.format(iter_step, epoch))
-        # gen
-        network = self.netG
-        if isinstance(self.netG, nn.DataParallel):
-            network = network.module
-        state_dict = network.state_dict()
-        for key, param in state_dict.items():
-            state_dict[key] = param.cpu()
-        torch.save(state_dict, gen_path)
-        # opt
-        opt_state = {'epoch': epoch, 'iter': iter_step,
-                     'scheduler': None, 'optimizer': None}
-        opt_state['optimizer'] = self.optG.state_dict()
-        torch.save(opt_state, opt_path)
-
-        logger.info(
-            '[SR] Saved model in [{:s}] ...'.format(gen_path))
-        
-        # mica
         
     # --------------------------- computing fn ----------------------------
     
@@ -130,6 +105,28 @@ class ThreeDSuperResolutionModel(BaseModel):
         # Convert back to image format
         enhanced_images = self.postprocess_data(enhanced_images)
         return enhanced_images
+    
+    def create_tensor_blob(self, images, input_mean=127.5, input_std=127.5, size=(112, 112), swapRB=True):
+        """
+        images: tensor of shape (3, H, W), assumed to be in range [0, 1]
+        input_mean: mean value for normalization
+        input_std: standard deviation for normalization
+        size: target size for resizing (width, height)
+        swapRB: swap the Red and Blue channels (if True, swap channels)
+        """
+
+        # Normalize: (image - mean) / std
+        images = (images - input_mean) / input_std
+        
+        # Resize the image using interpolation
+        resized_images = F.interpolate(images.unsqueeze(0), size=size, mode='bilinear', align_corners=False).squeeze(0)
+
+        # Swap the channels from RGB to BGR if necessary
+        if swapRB:
+            resized_images = resized_images[[2, 1, 0], :, :]  # Swap channels if needed
+        
+        return resized_images
+
 
     def create_arcface_embeddings(self, images):
         
@@ -210,11 +207,11 @@ class ThreeDSuperResolutionModel(BaseModel):
     def training_MICA(self, batch, current_epoch = 0):
         self.mica_model.train() # loop here!!
 
-        images = batch['image'].to(self.device[0]) # !!take a look!! for multi gpu
+        images = batch['image']
         images = images.view(-1, images.shape[-3], images.shape[-2], images.shape[-1])
         flame = batch['flame']
-        arcface = batch['arcface']
-        arcface = arcface.view(-1, arcface.shape[-3], arcface.shape[-2], arcface.shape[-1]).to(self.device[0]) # !!take a look!! for multi gpu
+        arcface = batch['arcface'].cuda()
+        arcface = arcface.view(-1, arcface.shape[-3], arcface.shape[-2], arcface.shape[-1])
 
         inputs = {
             'images': images,
@@ -252,38 +249,41 @@ class ThreeDSuperResolutionModel(BaseModel):
         return out_dict
 
     def test_sr(self, continous=False):
-        # sr
-        self.sr_model.eval()
-        with torch.no_grad():
-            if isinstance(self.sr_model, nn.DataParallel):
-                self.SR = self.sr_model.module.super_resolution(
-                    self.data['SR'], continous)
-            else:
-                self.SR = self.sr_model.super_resolution(
-                    self.data['SR'], continous)
-        self.sr_model.train()
+        
+        if isinstance(self.sr_model, (torch.nn.parallel.DataParallel, torch.nn.parallel.DistributedDataParallel)):
+            self.SR = self.sr_model.module.super_resolution_learn(
+                self.data['SR'], continous)
+        else:
+            self.SR = self.sr_model.super_resolution_learn(
+                self.data['SR'], continous)
+            
+    def get_tensor_sr_img(self):
+        
+        self.SR = self.sr_model(self.data, sr_out = True)
+        
+        return self.SR
 
     def sample(self, batch_size=1, continous=False):
         self.sr_model.eval()
         with torch.no_grad():
-            if isinstance(self.sr_model, nn.DataParallel):
+            if isinstance(self.sr_model, (torch.nn.parallel.DataParallel, torch.nn.parallel.DistributedDataParallel)):
                 self.SR = self.sr_model.module.sample(batch_size, continous)
             else:
                 self.SR = self.sr_model.sample(batch_size, continous)
         self.sr_model.train()
 
     def set_loss(self):
-        if isinstance(self.sr_model, nn.DataParallel):
-            self.sr_model.module.set_loss(self.device[0])
+        if isinstance(self.sr_model, (torch.nn.parallel.DataParallel, torch.nn.parallel.DistributedDataParallel)):
+            self.sr_model.module.set_loss(self.device)
         else:
             self.sr_model.set_loss(self.device)
 
     def set_new_noise_schedule(self, schedule_opt, schedule_phase='train'):
         if self.schedule_phase is None or self.schedule_phase != schedule_phase:
             self.schedule_phase = schedule_phase
-            if isinstance(self.sr_model, nn.DataParallel):
+            if isinstance(self.sr_model, (torch.nn.parallel.DataParallel, torch.nn.parallel.DistributedDataParallel)):
                 self.sr_model.module.set_new_noise_schedule(
-                    schedule_opt, self.device[0])
+                    schedule_opt, self.device)
             else:
                 self.sr_model.set_new_noise_schedule(schedule_opt, self.device)
 
@@ -360,7 +360,6 @@ class ThreeDSuperResolutionModel(BaseModel):
         self.sr_model.eval()
         self.mica_model.eval()
         self.arcface.eval()
-        
     
     # -------------------- preprocessing fn --------------------------
 
@@ -376,3 +375,23 @@ class ThreeDSuperResolutionModel(BaseModel):
                 dict_a[key] = train_data[key]
         
         return dict_a
+    
+    def move_to_device(self, data, device):
+        if isinstance(data, torch.Tensor):
+            # Move tensor to the specified device
+            return data.to(device)
+        elif isinstance(data, list):
+            # Convert list to tensor only if it contains numeric data
+            try:
+                return torch.tensor(data, device=device)
+            except ValueError:
+                return data  # Return the list unchanged if it can't be converted
+        elif isinstance(data, dict):
+            # Recursively process dictionaries
+            return {key: self.move_to_device(value, device) for key, value in data.items()}
+        elif isinstance(data, str):
+            # Leave strings unchanged
+            return data
+        else:
+            # Return other data types unchanged (e.g., None, int, float)
+            return data

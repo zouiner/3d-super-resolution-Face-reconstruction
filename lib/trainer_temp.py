@@ -160,11 +160,15 @@ class Trainer(object):
         if self.cfg['phase'] == 'val' and os.path.exists(os.path.join(self.cfg.output_dir,'model.tar')):
             
             load_path = os.path.join(self.cfg.output_dir, 'model.tar')
+        
+        if self.cfg.checkpoint:
+            
+            load_path = self.cfg.checkpoint
 
 
         if load_path and os.path.exists(load_path):
             logger.info(f'Loading combined checkpoint from [{load_path}]')
-            checkpoint = torch.load(load_path)
+            checkpoint = torch.load(load_path, map_location=torch.device('cpu'))
 
             # Add `module.` prefix if the model is distributed
             sr_state_dict = checkpoint['sr_model_state']
@@ -200,7 +204,7 @@ class Trainer(object):
                 sr_network = self.model.sr_model
                 
                 # Load the generator state with strict=False in case there are extra keys
-                sr_network.load_state_dict(torch.load(gen_path), strict=False)
+                sr_network.load_state_dict(torch.load(gen_path, map_location=torch.device('cpu')), strict=False)
                 logger.info(f'[SR] Loaded pretrained SR model from [{gen_path}]')
                 
                 # If the optimizer path exists, load the optimizer state (optional)
@@ -298,22 +302,24 @@ class Trainer(object):
                     images_list = []
                     arcface_list = []
                     _sr_train_data = sr_train_data
-                    self.model.set_new_noise_schedule(self.cfg.sr.model.beta_schedule.val, schedule_phase='val') # for visual SR to fedd into mica
+                    self.model.set_new_noise_schedule(self.cfg.sr.model.beta_schedule[self.cfg['phase']], schedule_phase= self.cfg['phase']) # for visual SR to fedd into mica
                     for i in range(len(train_data['SR'])):
                         for j in range(len(self.filter_and_slice_train_data(train_data, order = i)['SR'])):
                             _sr_train_data['SR'] = self.filter_and_slice_train_data(train_data, order = i)['SR'][j].unsqueeze(0)
                             _sr_train_data['HR'] = self.filter_and_slice_train_data(train_data, order = i)['HR'][j].unsqueeze(0)
                             _sr_train_data['Index'] = self.filter_and_slice_train_data(train_data, order = i)['Index'][j].unsqueeze(0)
                             self.model.feed_data(_sr_train_data)
-                            self.model.test_sr(continous=False)
+                            tensor_sr = self.model.get_tensor_sr_img()
                             visuals = self.model.get_current_visuals()
                             
                             sr_img = Metrics.tensor2img(visuals['SR'])
-                            sr_up_img = (cv2.resize(sr_img, (224, 224)))
+                            temp_sr_up_img = Metrics.tensor2tensor_img(tensor_sr) * 255.0
+                            
                             
                             if self.cfg.mica.train.arcface_new:
-                                temp_arcface = self.model.create_arcface_embeddings(sr_up_img)
-                                arcface_list.append(torch.tensor(temp_arcface))
+                                temp_arcface = self.model.create_tensor_blob(temp_sr_up_img)
+                                arcface_list.append(temp_arcface.clone().detach().requires_grad_(True))
+                            
                             
                             if visualizeTraining:
                                 savepath = os.path.join(self.cfg.output_dir, 'train_images/{}_{}'.format(self.current_epoch, self.global_step))
@@ -324,8 +330,8 @@ class Trainer(object):
                                 Metrics.save_img(hr_img, '{}/{}_{}_hr.png'.format(savepath, i, j))
                                 Metrics.save_img(inf_img, '{}/{}_{}_inf.png'.format(savepath, i, j))
                             
-                            
-                            images_list.append(sr_up_img.transpose(2,0,1)/255) # /255
+                            sr_up_img = (cv2.resize(sr_img, (224, 224)))
+                            images_list.append(sr_up_img.transpose(2,0,1)/255) # image no need to be tensor becasue mica use only arcface
                     
                     images_list = [torch.from_numpy(image) if isinstance(image, np.ndarray) else image for image in images_list]
                     images_array = torch.stack(images_list).view(train_data['image'].shape)
@@ -335,8 +341,6 @@ class Trainer(object):
                     batch = self.filter_and_slice_train_data(train_data, 0, keys_to_keep_and_slice = {}, keys_to_keep = {'image', 'arcface', 'imagename', 'dataset', 'flame'})
                     batch['image'] = images_array
                     batch['arcface'] = arcface_array
-                    
-                    self.model.set_new_noise_schedule(self.cfg.sr.model.beta_schedule.val, schedule_phase='train')
                     
                     self.model.feed_data(sr_train_data)
                     inputs, opdict, encoder_output, decoder_output = self.model.training_MICA(batch, self.current_epoch)
@@ -422,7 +426,7 @@ class Trainer(object):
                             pred_canonical_shape_vertices = torch.cat([pred_canonical_shape_vertices, rendering])
                             rendering = self.model.render.render_mesh(opdict['flame_verts_shape'][n:n + 1, ...])
                             flame_verts_shape = torch.cat([flame_verts_shape, rendering])
-                            input_images = torch.cat([input_images, opdict['images'][n:n + 1, ...]])
+                            input_images = torch.cat([input_images, opdict['images'].cuda()[n:n + 1, ...]])
                             if 'deca' in opdict:
                                 deca = self.model.render.render_mesh(opdict['deca'][n:n + 1, ...])
                                 deca_images = torch.cat([deca_images, deca])

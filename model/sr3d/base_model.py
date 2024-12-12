@@ -45,43 +45,35 @@ class BaseModel(nn.Module):
         print(f"Loaded pretrained weights from {weights_path}")
 
     def set_device(self, x):
-        if len(self.device) > 1:
-            device = self.device[0]
-        else:
-            device = self.device
         if isinstance(x, dict):
             for key, item in x.items():
                 try:
                     if item is not None:
-                        x[key] = item.to(device)
+                        x[key] = item.cuda()
                 except:
                     pass
         elif isinstance(x, list):
             for item in x:
                 if item is not None:
-                    item = item.to(device)
+                    item = item.cuda()
         else:
-            x = x.to(device)
+            x = x.cuda()
         return x
     
     # MICA
     
     def create_weights(self):
-        if len(self.device) > 1:
-            self.vertices_mask = self.masking.get_weights_per_vertex().to(self.device[0])
-            self.triangle_mask = self.masking.get_weights_per_triangle().to(self.device[0])
-        else:
-            self.vertices_mask = self.masking.get_weights_per_vertex().to(self.device)
-            self.triangle_mask = self.masking.get_weights_per_triangle().to(self.device)
+        self.vertices_mask = self.masking.get_weights_per_vertex().cuda()
+        self.triangle_mask = self.masking.get_weights_per_triangle().cuda()
 
     def create_flame(self, model_cfg):
         self.flame = FLAME(model_cfg)
         if len(self.device) > 1:
             self.flame = torch.nn.DataParallel(self.flame, device_ids=self.device)
-            self.flame = self.flame.to(self.device[0])
+            self.flame = self.flame.cuda()
             self.flame = self.flame.module
         else:
-            self.flame.to(self.device[0])
+            self.flame = self.flame.cuda()
         self.average_face = self.flame.v_template.clone()[None]
 
         self.flame.eval()
@@ -92,8 +84,8 @@ class BaseModel(nn.Module):
         self.verts_template_uv = None
 
     def create_weights(self):
-        self.vertices_mask = self.masking.get_weights_per_vertex().to(self.device[0])
-        self.triangle_mask = self.masking.get_weights_per_triangle().to(self.device[0])
+        self.vertices_mask = self.masking.get_weights_per_vertex().cuda()
+        self.triangle_mask = self.masking.get_weights_per_triangle().cuda()
 
     def create_template(self, B):
         with torch.no_grad():
