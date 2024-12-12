@@ -8,7 +8,7 @@
 #SBATCH --time=3-00:00:00                      # Time limit (DD-HH:MM:SS)
 #SBATCH --output=cuda_log/cuda_job_sr3d_8_32_%j.log      # Standard output and error log
 #SBATCH --partition=gpu                        # Select the GPU nodes... (, interactive, gpu , gpuplus)  
-#SBATCH --gres=gpu:3                           # ...and the Number of GPUs
+#SBATCH --gres=gpu:1                          # ...and the Number of GPUs
 #SBATCH --account=its-gpu-2023                 # Run job under project <project>
 
 module purge

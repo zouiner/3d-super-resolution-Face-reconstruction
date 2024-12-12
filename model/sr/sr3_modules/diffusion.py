@@ -270,11 +270,11 @@ class GaussianDiffusion(nn.Module):
             )
         ).to(x_start.device)
         continuous_sqrt_alpha_cumprod = continuous_sqrt_alpha_cumprod.view(
-            b, -1)
+            b, -1).to(x_start.device)
 
         noise = default(noise, lambda: torch.randn_like(x_start))
         x_noisy = self.q_sample(
-            x_start=x_start, continuous_sqrt_alpha_cumprod=continuous_sqrt_alpha_cumprod.view(-1, 1, 1, 1), noise=noise)
+            x_start=x_start, continuous_sqrt_alpha_cumprod=continuous_sqrt_alpha_cumprod.view(-1, 1, 1, 1), noise=noise).to(x_start.device)
 
         if not self.conditional:
             x_recon = self.denoise_fn(x_noisy, continuous_sqrt_alpha_cumprod)
@@ -290,4 +290,32 @@ class GaussianDiffusion(nn.Module):
             return loss
 
     def forward(self, x, sr_out = False, *args, **kwargs):
+        if isinstance(x, DictTensor):
+            x = x.data
         return self.p_losses(x, sr_out = sr_out, *args, **kwargs)
+
+
+######################
+
+class DictTensor:
+    def __init__(self, data):
+        self.data = data
+
+    def to(self, device):
+        self.data = {k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in self.data.items()}
+        return self
+
+    def __getitem__(self, key):
+        return self.data[key]
+
+    def __setitem__(self, key, value):
+        self.data[key] = value
+
+    def keys(self):
+        return self.data.keys()
+
+    def items(self):
+        return self.data.items()
+
+    def __repr__(self):
+        return str(self.data)

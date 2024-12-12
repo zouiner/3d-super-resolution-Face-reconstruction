@@ -180,7 +180,8 @@ class Arcface(IResNet):
         return x
 
     def forward_arcface(self, x):
-        with torch.cuda.amp.autocast(self.fp16):
+        with torch.amp.autocast(device_type='cuda', dtype=torch.float16 if self.fp16 else torch.float32):
+
             ### FROZEN ###
             with torch.no_grad():
                 x = self.conv1(x)

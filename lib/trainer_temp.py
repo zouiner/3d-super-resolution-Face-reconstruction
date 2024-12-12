@@ -168,7 +168,7 @@ class Trainer(object):
 
         if load_path and os.path.exists(load_path):
             logger.info(f'Loading combined checkpoint from [{load_path}]')
-            checkpoint = torch.load(load_path, map_location=torch.device('cpu'))
+            checkpoint = torch.load(load_path, map_location=torch.device('cpu'), weights_only=True)
 
             # Add `module.` prefix if the model is distributed
             sr_state_dict = checkpoint['sr_model_state']
@@ -204,7 +204,7 @@ class Trainer(object):
                 sr_network = self.model.sr_model
                 
                 # Load the generator state with strict=False in case there are extra keys
-                sr_network.load_state_dict(torch.load(gen_path, map_location=torch.device('cpu')), strict=False)
+                sr_network.load_state_dict(torch.load(gen_path, map_location=torch.device('cpu'), weights_only=True), strict=False) # , weights_only=True ??
                 logger.info(f'[SR] Loaded pretrained SR model from [{gen_path}]')
                 
                 # If the optimizer path exists, load the optimizer state (optional)

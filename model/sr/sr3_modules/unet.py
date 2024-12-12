@@ -233,6 +233,7 @@ class UNet(nn.Module):
         self.final_conv = Block(pre_channel, default(out_channel, in_channel), groups=norm_groups)
 
     def forward(self, x, time):
+            
         t = self.noise_level_mlp(time) if exists(
             self.noise_level_mlp) else None
 

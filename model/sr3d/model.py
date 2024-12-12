@@ -259,7 +259,11 @@ class ThreeDSuperResolutionModel(BaseModel):
             
     def get_tensor_sr_img(self):
         
-        self.SR = self.sr_model(self.data, sr_out = True)
+        wrapped_data = DictTensor(self.data)
+        wrapped_data = wrapped_data.to('cuda')  # Ensure the data is on the correct device
+
+        
+        self.SR = self.sr_model(wrapped_data, sr_out = True)
         
         return self.SR
 
@@ -395,3 +399,31 @@ class ThreeDSuperResolutionModel(BaseModel):
         else:
             # Return other data types unchanged (e.g., None, int, float)
             return data
+        
+
+###########
+
+class DictTensor:
+    def __init__(self, data):
+        self.data = data
+
+    def to(self, device):
+        self.data = {
+            k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in self.data.items()
+        }
+        return self
+
+    def __getitem__(self, key):
+        return self.data[key]
+
+    def __setitem__(self, key, value):
+        self.data[key] = value
+
+    def keys(self):
+        return self.data.keys()
+
+    def items(self):
+        return self.data.items()
+
+    def __repr__(self):
+        return str(self.data)
