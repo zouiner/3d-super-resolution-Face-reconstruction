@@ -7,6 +7,7 @@ Output/*
 env/
 contents/
 cuda_log/
+sr_pretrained_model/
 
 # data
 data/FLAME2020
