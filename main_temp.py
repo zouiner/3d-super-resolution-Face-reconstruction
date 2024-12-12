@@ -52,9 +52,9 @@ def main(cfg):
     
     # !!! Check it again
     cudnn.benchmark = True
-    cudnn.deterministic = False
+    cudnn.deterministic = True
     cudnn.enabled = True
-    # torch.cuda.empty_cache()
+    torch.cuda.empty_cache()
     # deterministic(rank) - MICA
 
     from lib.trainer_temp import Trainer
