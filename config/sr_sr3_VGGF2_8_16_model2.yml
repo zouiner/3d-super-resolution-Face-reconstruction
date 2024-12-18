@@ -1,4 +1,4 @@
-name: "sr_sr3_VGGF2_8_32_n2n"
+name: "sr_vggf2_8_16_model2"
 phase: "train"
 device_id: [0]
 
@@ -8,26 +8,26 @@ path:
   checkpoint: "checkpoint"
   
 sr:
-  pretrained_model_path: '/users/ps1510/scratch/Programs/3d-super-resolution-Face-reconstruction/sr_pretrained_model/8_32_n_400/I2000000_E11'
+  pretrained_model_path: '/users/ps1510/scratch/Programs/3d-super-resolution-Face-reconstruction/sr_pretrained_model/8_16_n_100/I1520000_E8'
   datasets:
     train:
-      name: "LYHM_8_32"
+      name: "LYHM_8_16"
       mode: "HR"
-      dataroot: "contents/LYHM_8_32"
+      dataroot: "contents/LYHM_8_16"
       datatype: "img"
       l_resolution: 8
-      r_resolution: 32
+      r_resolution: 16
       batch_size: 4
-      num_workers: 1
+      num_workers: 8
       use_shuffle: true
       data_len: -1
     val:
-      name: "NoW_8_32"
+      name: "LYHM_8_16"
       mode: "LRHR"
-      dataroot: "contents/NoW_MICA_8_32"
+      dataroot: "contents/NoW_MICA_8_16"
       datatype: "img"
       l_resolution: 8
-      r_resolution: 32
+      r_resolution: 16
       data_len: -1
   model:
     which_model_G: "sr3"
@@ -49,12 +49,12 @@ sr:
     beta_schedule:
       train:
         schedule: "linear"
-        n_timestep: 400
+        n_timestep: 100
         linear_start: 0.000001
         linear_end: 0.01
       val:
         schedule: "linear"
-        n_timestep: 400
+        n_timestep: 100
         linear_start: 0.000001
         linear_end: 0.01
     diffusion:
@@ -62,9 +62,9 @@ sr:
       channels: 3
       conditional: true
   train:
-    n_iter: 2000000 # 4000000
+    n_iter: 1520000 # 4000000
     val_freq: 10000
-    save_checkpoint_freq: 1000
+    save_checkpoint_freq: 2000
     print_freq: 200
     optimizer:
       type: "adam"
@@ -86,7 +86,7 @@ mica:
     training_data: [ 'LYHM' ]
     eval_data: [ 'LYHM' ]
     dataset_path: 'contents/'
-    num_workers: 1
+    num_workers: 4
     batch_size: 2
     K: 2
   train:
@@ -95,13 +95,13 @@ mica:
     weight_decay: 2e-4
     use_mask: True
     reset_optimizer: False
-    max_steps: 200000
+    max_steps: 160000
     log_steps: 50
     val_steps: 100 #300
-    vis_steps: 100 #1200
+    vis_steps: 500 #1200
     val_save_img: 300 #1200
-    checkpoint_steps: 150 #1000
-    checkpoint_epochs_steps: 1000 #10000
+    checkpoint_steps: 2000 #1000
+    checkpoint_epochs_steps: 2000 #10000
     arcface_new: True
 
 # -------------------------------------------------------------------------
@@ -109,8 +109,5 @@ mica:
 wandb:
   project: "sr_vggf2"
 
-# python main_temp.py -p train -c config/sr_sr3_VGGF2_8_32.yml
-# python main_temp.py -p val -c config/sr_sr3_VGGF2_8_32.yml -ckt /users/ps1510/scratch/Programs/3d-super-resolution-Face-reconstruction/Output/sr_sr3_VGGF2_8_32_n2n/checkpoint/I2000000_E15_checkpoint.pth
-
-# On Slurm
-# python -m debugpy --listen 0.0.0.0:5678 --wait-for-client main_temp.py -p train -c config/sr_sr3_VGGF2_8_32.yml
+# python main_temp.py -p train -c config/sr_sr3_VGGF2_8_16_model2.yml -m model2
+# python main_temp.py -p val -c config/sr_sr3_VGGF2_8_16_model2.yml

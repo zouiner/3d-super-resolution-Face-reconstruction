@@ -312,6 +312,12 @@ class Trainer(object):
                             tensor_sr = self.model.get_tensor_sr_img()
                             visuals = self.model.get_current_visuals()
                             
+                            # If output has an unexpected number of channels, fix it
+                        if tensor_sr.shape[-1] > 3:  # Too many channels
+                            tensor_sr = tensor_sr[:, :, :3]  # Take the first 3 channels
+                            visuals['SR'] = visuals['SR'][:, :, :3]  # Take the first 3 channels
+                            
+                            
                             sr_img = Metrics.tensor2img(visuals['SR'])
                             temp_sr_up_img = Metrics.tensor2tensor_img(tensor_sr) * 255.0
                             
@@ -589,71 +595,72 @@ class Trainer(object):
             faces = self.model.mica_model.generator.faces_tensor.cpu()
             self.model.testing = True
             self.model.eval()
-            for _,  val_data in tqdm(enumerate(self.val_iter), total=len(self.val_iter), desc="Processing training data"):
-                idx += 1
-                self.model.feed_data(val_data)
-                self.model.test_sr(continous=False)
-                visuals = self.model.get_current_visuals()
+            with torch.no_grad():
+                for _,  val_data in tqdm(enumerate(self.val_iter), total=len(self.val_iter), desc="Processing training data"):
+                    idx += 1
+                    self.model.feed_data(val_data)
+                    self.model.test_sr(continous=False)
+                    visuals = self.model.get_current_visuals()
 
-                hr_img = Metrics.tensor2img(visuals['HR'])  # uint8
-                lr_img = Metrics.tensor2img(visuals['LR'])  # uint8
-                fake_img = Metrics.tensor2img(visuals['INF'])  # uint8
-                sr_img = Metrics.tensor2img(visuals['SR'])  # uint8
-                
-                name = os.path.basename(val_data['path_sr'][0])[:-4]
+                    hr_img = Metrics.tensor2img(visuals['HR'])  # uint8
+                    lr_img = Metrics.tensor2img(visuals['LR'])  # uint8
+                    fake_img = Metrics.tensor2img(visuals['INF'])  # uint8
+                    sr_img = Metrics.tensor2img(visuals['SR'])  # uint8
+                    
+                    name = os.path.basename(val_data['path_sr'][0])[:-4]
 
-                # MICA 
-                
-                sr_up_img = cv2.resize(sr_img, (224, 224))
-                temp_arcface = self.model.create_arcface_embeddings(sr_up_img)
-                temp_arcface = torch.tensor(temp_arcface).cuda()[None]
-                
-                sr_up_img = sr_up_img / 255.
-                sr_up_img = sr_up_img.transpose(2, 0, 1)
-                sr_up_img = torch.tensor(sr_up_img).cuda()[None]
-                
-                self.model.eval()
-                encoder_output = self.model.encode_mica(sr_up_img, temp_arcface)
-                opdict = self.model.decode_mica(encoder_output)
-                meshes = opdict['pred_canonical_shape_vertices']
-                code = opdict['pred_shape_code']
-                lmk = self.model.flame.compute_landmarks(meshes)
+                    # MICA 
+                    
+                    sr_up_img = cv2.resize(sr_img, (224, 224))
+                    temp_arcface = self.model.create_arcface_embeddings(sr_up_img)
+                    temp_arcface = torch.tensor(temp_arcface).cuda()[None]
+                    
+                    sr_up_img = sr_up_img / 255.
+                    sr_up_img = sr_up_img.transpose(2, 0, 1)
+                    sr_up_img = torch.tensor(sr_up_img).cuda()[None]
+                    
+                    self.model.eval()
+                    encoder_output = self.model.encode_mica(sr_up_img, temp_arcface)
+                    opdict = self.model.decode_mica(encoder_output)
+                    meshes = opdict['pred_canonical_shape_vertices']
+                    code = opdict['pred_shape_code']
+                    lmk = self.model.flame.compute_landmarks(meshes)
 
-                mesh = meshes[0]
-                landmark_51 = lmk[0, 17:]
-                landmark_7 = landmark_51[[19, 22, 25, 28, 16, 31, 37]]
+                    mesh = meshes[0]
+                    landmark_51 = lmk[0, 17:]
+                    landmark_7 = landmark_51[[19, 22, 25, 28, 16, 31, 37]]
 
-                
-                savepath = os.path.join(self.cfg.output_dir, 'val_images')
-                
-                dst = Path(savepath, name)
-                dst.mkdir(parents=True, exist_ok=True)
-                trimesh.Trimesh(vertices=mesh.detach().cpu().numpy() * 1000.0, faces=faces, process=False).export(f'{dst}/mesh.ply')  # save in millimeters
-                trimesh.Trimesh(vertices=mesh.detach().cpu().numpy() * 1000.0, faces=faces, process=False).export(f'{dst}/mesh.obj')
-                np.save(f'{dst}/identity', code[0].detach().cpu().numpy())
-                np.save(f'{dst}/kpt7', landmark_7.detach().cpu().numpy() * 1000.0)
-                np.save(f'{dst}/kpt68', lmk.detach().cpu().numpy() * 1000.0)
+                    
+                    savepath = os.path.join(self.cfg.output_dir, 'val_images', '{}_{}'.format(self.current_epoch, self.global_step))
+                    
+                    dst = Path(savepath, name)
+                    dst.mkdir(parents=True, exist_ok=True)
+                    trimesh.Trimesh(vertices=mesh.detach().cpu().numpy() * 1000.0, faces=faces, process=False).export(f'{dst}/mesh.ply')  # save in millimeters
+                    trimesh.Trimesh(vertices=mesh.detach().cpu().numpy() * 1000.0, faces=faces, process=False).export(f'{dst}/mesh.obj')
+                    np.save(f'{dst}/identity', code[0].detach().cpu().numpy())
+                    np.save(f'{dst}/kpt7', landmark_7.detach().cpu().numpy() * 1000.0)
+                    np.save(f'{dst}/kpt68', lmk.detach().cpu().numpy() * 1000.0)
 
-                
-                Metrics.save_img(sr_img, '{}/{}_sr.png'.format(dst, name))
+                    
+                    Metrics.save_img(sr_img, '{}/{}_sr.png'.format(dst, name))
 
-                Metrics.save_img(
-                    hr_img, '{}/{}_hr.png'.format(dst, name))
-                Metrics.save_img(
-                    fake_img, '{}/{}_inf.png'.format(dst, name))
-                Metrics.save_img(
-                    lr_img, '{}/{}_lr.png'.format(dst, name))
+                    Metrics.save_img(
+                        hr_img, '{}/{}_hr.png'.format(dst, name))
+                    Metrics.save_img(
+                        fake_img, '{}/{}_inf.png'.format(dst, name))
+                    Metrics.save_img(
+                        lr_img, '{}/{}_lr.png'.format(dst, name))
 
 
-                # generation
-                eval_psnr = Metrics.calculate_psnr(Metrics.tensor2img(visuals['SR']), hr_img)
-                eval_ssim = Metrics.calculate_ssim(Metrics.tensor2img(visuals['SR']), hr_img)
+                    # generation
+                    eval_psnr = Metrics.calculate_psnr(Metrics.tensor2img(visuals['SR']), hr_img)
+                    eval_ssim = Metrics.calculate_ssim(Metrics.tensor2img(visuals['SR']), hr_img)
 
-                avg_psnr += eval_psnr
-                avg_ssim += eval_ssim
-                # compute_loss mica
-                if self.wandb_logger and self.cfg['log_eval']:
-                    self.wandb_logger.log_eval_data(fake_img, Metrics.tensor2img(visuals['SR'][-1]), hr_img, eval_psnr, eval_ssim)
+                    avg_psnr += eval_psnr
+                    avg_ssim += eval_ssim
+                    # compute_loss mica
+                    if self.wandb_logger and self.cfg['log_eval']:
+                        self.wandb_logger.log_eval_data(fake_img, Metrics.tensor2img(visuals['SR'][-1]), hr_img, eval_psnr, eval_ssim)
 
             avg_psnr = avg_psnr / idx
             avg_ssim = avg_ssim / idx

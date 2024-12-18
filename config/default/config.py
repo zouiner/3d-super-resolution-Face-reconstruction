@@ -22,6 +22,7 @@ cfg.log_wandb_ckpt = None
 cfg.log_eval = None
 cfg.sample = None
 cfg.checkpoint = None
+cfg.model = None
 
 cfg.output_dir = "/users/ps1510/scratch/Programs/3d-super-resolution-Face-reconstruction/Output"
 
@@ -250,6 +251,7 @@ def parse_args():
                         help='Run either train(training) or val(generation)', default='train')
     parser.add_argument('-s', '--sample', type=int, default=1)
     parser.add_argument('-ckt','--checkpoint', type=str, default=None)
+    parser.add_argument('-m','--model', type=str, default=None)
 
     args = parser.parse_args()
 
@@ -269,6 +271,8 @@ def parse_args():
         cfg.sample = args.sample
     if args.checkpoint is not None:
         cfg.checkpoint = args.checkpoint 
+    if args.model is not None:
+        cfg.model = args.model 
 
     cfg.output_dir = os.path.join(cfg.output_dir, cfg.name)
     

@@ -49,7 +49,7 @@ class ThreeDSuperResolutionModel(BaseModel):
         
         if len(self.device) > 1:
             self.sr_model = nn.DataParallel(self.sr_model, device_ids=self.device)
-            self.sr_model = self.sr_model.cuda().module
+            self.sr_model = self.sr_model.cuda(0).module
         
         self.sr_model = self.sr_model.cuda()
         
@@ -260,7 +260,7 @@ class ThreeDSuperResolutionModel(BaseModel):
     def get_tensor_sr_img(self):
         
         wrapped_data = DictTensor(self.data)
-        wrapped_data = wrapped_data.to('cuda')  # Ensure the data is on the correct device
+        wrapped_data = wrapped_data.to("cuda:0")  # Ensure the data is on the correct device
 
         
         self.SR = self.sr_model(wrapped_data, sr_out = True)
