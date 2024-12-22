@@ -141,19 +141,19 @@ class GaussianDiffusion(nn.Module):
             (1. - alphas_cumprod_prev) * np.sqrt(alphas) / (1. - alphas_cumprod)))
 
     def predict_start_from_noise(self, x_t, t, noise):
-        # Align devices dynamically
-        device = self.sqrt_recip_alphas_cumprod.device  # Choose the device of x_t
-        x_t = x_t.to(device)
-        noise = noise.to(device)
+        # # Align devices dynamically
+        # device = self.sqrt_recip_alphas_cumprod.device  # Choose the device of x_t
+        # x_t = x_t.to(device)
+        # noise = noise.to(device)
         
         return (self.sqrt_recip_alphas_cumprod[t] * x_t - \
             self.sqrt_recipm1_alphas_cumprod[t] * noise)
 
     def q_posterior(self, x_start, x_t, t):
-        # Align devices dynamically
-        device = self.posterior_mean_coef1.device  # Choose the device of x_t
-        x_start = x_start.to(device)
-        x_t = x_t.to(device)
+        # # Align devices dynamically
+        # device = self.posterior_mean_coef1.device  # Choose the device of x_t
+        # x_start = x_start.to(device)
+        # x_t = x_t.to(device)
         
         posterior_mean = self.posterior_mean_coef1[t] * \
             x_start + self.posterior_mean_coef2[t] * x_t
@@ -231,17 +231,17 @@ class GaussianDiffusion(nn.Module):
             x=x, t=t, clip_denoised=clip_denoised, condition_x=condition_x)
         noise = torch.randn_like(x) if t > 0 else torch.zeros_like(x)
         
-        # Align with primary tensor x
-        device = x.device  
-        model_mean = model_mean.to(device)
-        noise = noise.to(device)
-        model_log_variance = model_log_variance.to(device)
+        # # Align with primary tensor x
+        # device = x.device  
+        # model_mean = model_mean.to(device)
+        # noise = noise.to(device)
+        # model_log_variance = model_log_variance.to(device)
         
         return model_mean + noise * (0.5 * model_log_variance).exp()
     
     def p_sample_loop_learn(self, x_in, continous=False):
-        # device = self.betas.device
-        device = x_in.device
+        device = self.betas.device
+        # device = x_in.device
         sample_inter = (1 | (self.num_timesteps//10))
         if not self.conditional:
             shape = x_in

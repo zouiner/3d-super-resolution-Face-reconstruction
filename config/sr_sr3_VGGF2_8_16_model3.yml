@@ -1,6 +1,6 @@
 name: "sr_vggf2_8_16_model3"
 phase: "train"
-device_id: [0,1,2]
+device_id: [0]
 
 path:
   log: "logs"
@@ -111,3 +111,4 @@ wandb:
 
 # python main_temp.py -p train -c config/sr_sr3_VGGF2_8_16_model3.yml
 # python main_temp.py -p val -c config/sr_sr3_VGGF2_8_16_model3.yml
+# python -m debugpy --listen 0.0.0.0:5678 --wait-for-client main_temp.py -p train -c config/sr_sr3_VGGF2_8_16_model3.yml

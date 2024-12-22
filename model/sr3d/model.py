@@ -87,7 +87,9 @@ class ThreeDSuperResolutionModel(BaseModel):
     # --------------------------- computing fn ----------------------------
     
     def feed_data(self, data):
-        self.data = self.set_device(data)
+        x = self.set_device(data)
+        
+        return x 
     
     def enhance_images_with_super_resolution(self, train_data): # !! move to training.py
         """
@@ -173,19 +175,6 @@ class ThreeDSuperResolutionModel(BaseModel):
 
         return codedict
 
-    def forward(self, images):
-        """
-        Process a batch of images. Pass the batch of images through the super-resolution
-        model first, then the MICA model.
-        """
-        # Step 1: Enhance the resolution of the input images (batch)
-        enhanced_images = self.enhance_images_with_super_resolution(images)
-
-        # Step 2: Reconstruct the 3D faces for the batch
-        reconstructed_faces, shape_params = self.reconstruct_3d_faces(enhanced_images)
-
-        return reconstructed_faces, shape_params
-
     def preprocess_sr_data(self, train_data):
         """
         Preprocess a batch of input images by resizing them and converting them to tensors.
@@ -233,33 +222,35 @@ class ThreeDSuperResolutionModel(BaseModel):
 
         return inputs, opdict, encoder_output, decoder_output
     
-    def get_current_visuals(self, need_LR=True, sample=False):
+    def get_current_visuals(self, x_in, x, need_LR=True, sample=False):
         out_dict = OrderedDict()
         if sample:
-            out_dict['SAM'] = self.SR.detach().float().cpu()
+            out_dict['SAM'] = x.detach().float().cpu()
         else:
-            out_dict['SR'] = self.SR.detach().float().cpu()
-            out_dict['INF'] = self.data['SR'].detach().float().cpu()
-            if 'HR' in self.data:                        # !!take a look!! -> because just want only SR
-                out_dict['HR'] = self.data['HR'].detach().float().cpu()
-            if need_LR and 'LR' in self.data:
-                out_dict['LR'] = self.data['LR'].detach().float().cpu()
+            out_dict['SR'] = x.detach().float().cpu()
+            out_dict['INF'] = x_in['SR'].detach().float().cpu()
+            if 'HR' in x_in:                        # !!take a look!! -> because just want only SR
+                out_dict['HR'] = x_in['HR'].detach().float().cpu()
+            if need_LR and 'LR' in x_in:
+                out_dict['LR'] = x_in['LR'].detach().float().cpu()
             else:
                 out_dict['LR'] = out_dict['INF']
         return out_dict
 
-    def test_sr(self, continous=False):
+    def test_sr(self, x_in, continous=False):
         
         if isinstance(self.sr_model, (torch.nn.parallel.DataParallel, torch.nn.parallel.DistributedDataParallel)):
-            self.SR = self.sr_model.module.super_resolution_learn(
-                self.data['SR'], continous)
+            SR = self.sr_model.module.super_resolution(
+                x_in['SR'], continous)
         else:
-            self.SR = self.sr_model.super_resolution_learn(
-                self.data['SR'], continous)
-            
-    def get_tensor_sr_img(self):
+            SR = self.sr_model.super_resolution(
+                x_in['SR'], continous)
         
-        wrapped_data = DictTensor(self.data)
+        return SR
+            
+    def get_tensor_sr_img(self, x):
+        
+        wrapped_data = DictTensor(x)
         wrapped_data = wrapped_data.to("cuda:0")  # Ensure the data is on the correct device
 
         
@@ -294,20 +285,20 @@ class ThreeDSuperResolutionModel(BaseModel):
     def get_current_log(self):
         return self.log_dict
     
-    def compute_loss(self, inputs, encoder_output, decoder_output):
+    def compute_loss(self, input_sr, input_mica, encoder_output, decoder_output):
         
         self.train()
-        if 'imagename' in self.data:
-            del self.data['imagename']
+        if 'imagename' in input_sr:
+            del input_sr['imagename']
         # sr loss
         
-        l_sr = self.sr_model(self.data)
+        l_sr = self.sr_model(input_sr)
         # need to average in multi-gpu
-        b, c, h, w = self.data['HR'].shape
+        b, c, h, w = input_sr['HR'].shape
         l_sr = l_sr.sum()/int(b*c*h*w) 
         
         # mica loss
-        losses = self.compute_losses(inputs, encoder_output, decoder_output)
+        losses = self.compute_losses(input_mica, encoder_output, decoder_output)
 
         all_loss = 0.
         losses_key = losses.keys()
@@ -364,6 +355,24 @@ class ThreeDSuperResolutionModel(BaseModel):
         self.sr_model.eval()
         self.mica_model.eval()
         self.arcface.eval()
+    
+    def forward(self, x, t_output = None, v_output = None):
+        x = self.feed_data(x)
+        tensor_sr = None
+        visuals = None
+        if t_output:
+            tensor_sr = self.get_tensor_sr_img(x)
+            if v_output:
+                visuals = self.get_current_visuals(x, tensor_sr)
+                return tensor_sr, visuals
+            else:
+                return tensor_sr
+        elif v_output:
+            x_sr = self.test_sr()
+            visuals = self.get_current_visuals(x, x_sr)
+            
+            return visuals
+        
     
     # -------------------- preprocessing fn --------------------------
 

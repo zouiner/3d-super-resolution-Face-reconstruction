@@ -308,14 +308,10 @@ class Trainer(object):
                             _sr_train_data['SR'] = self.filter_and_slice_train_data(train_data, order = i)['SR'][j].unsqueeze(0)
                             _sr_train_data['HR'] = self.filter_and_slice_train_data(train_data, order = i)['HR'][j].unsqueeze(0)
                             _sr_train_data['Index'] = self.filter_and_slice_train_data(train_data, order = i)['Index'][j].unsqueeze(0)
-                            self.model.feed_data(_sr_train_data)
-                            tensor_sr = self.model.get_tensor_sr_img()
-                            visuals = self.model.get_current_visuals()
-                            
-                            # If output has an unexpected number of channels, fix it
-                        if tensor_sr.shape[-1] > 3:  # Too many channels
-                            tensor_sr = tensor_sr[:, :, :3]  # Take the first 3 channels
-                            visuals['SR'] = visuals['SR'][:, :, :3]  # Take the first 3 channels
+                            # self.model.feed_data(_sr_train_data)
+                            # tensor_sr, visuals = self.model.get_tensor_sr_img(t_output = True, v_output = True)
+                            # visuals = self.model.get_current_visuals()
+                            tensor_sr, visuals = self.model(_sr_train_data, t_output = True, v_output = True) # -> (3,16,16)
                             
                             
                             sr_img = Metrics.tensor2img(visuals['SR'])
@@ -348,20 +344,19 @@ class Trainer(object):
                     batch['image'] = images_array
                     batch['arcface'] = arcface_array
                     
-                    self.model.feed_data(sr_train_data)
-                    inputs, opdict, encoder_output, decoder_output = self.model.training_MICA(batch, self.current_epoch)
+                    input_mica, opdict, encoder_output, decoder_output = self.model.training_MICA(batch, self.current_epoch)
                     
                     self.opt_sr.zero_grad()
                     self.opt_mica.zero_grad()
-                    l_sr, l_mica, losses = self.model.compute_loss(inputs, encoder_output, decoder_output)
+                    l_sr, l_mica, losses = self.model.compute_loss(sr_train_data, input_mica, encoder_output, decoder_output)
                     
                     
                     l_mica = l_mica.cuda()
                     l_sr = l_sr.cuda()
 
                     # Combine losses
-                    alpha = 1 # !!! weight for loss contorlization
-                    beta = 1 # !!! weight for loss contorlization
+                    alpha = 0.5 # !!! weight for loss contorlization
+                    beta = 0.5 # !!! weight for loss contorlization
                     combined_loss = alpha * l_sr +  beta * l_mica
                     
                     losses['L1'] = l_sr

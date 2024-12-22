@@ -234,10 +234,10 @@ class UNet(nn.Module):
 
     def forward(self, x, time):
 
-        # fix the device problem
-        device = self.noise_level_mlp[1].weight.device  # Get layer's device
-        time = time.to(device)
-        x = x.to(device)
+        # # Align the device x
+        # device = self.noise_level_mlp[1].weight.device  # Get layer's device
+        # time = time.to(device)
+        # x = x.to(device)
 
         t = self.noise_level_mlp(time) if exists(
             self.noise_level_mlp) else None

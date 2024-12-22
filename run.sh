@@ -28,5 +28,6 @@ conda activate 3dsr # Your conda environment here
 
 # now run the python script
 python main_temp.py -p train -c config/sr_sr3_VGGF2_8_16_model2.yml -m model2
+# python main_temp.py -p train -c config/sr_sr3_VGGF2_8_32.yml
 
 # to run the command: sbatch run.sh
