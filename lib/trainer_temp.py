@@ -86,19 +86,19 @@ class Trainer(object):
         logger.info('Initial Model Finished')
         
         # If there are multiple devices, wrap the model with DataParallel
-        if torch.cuda.device_count() > 1:
-            self.model = nn.DataParallel(self.model, device_ids=self.device)
-            self.model = self.model.module
+        # if torch.cuda.device_count() > 1:
+        #     self.model = nn.DataParallel(self.model, device_ids=self.device)
+        #     self.model = self.model.module
         self.model = self.model.cuda()
 
         # self.validator = Validator(self)
         self.configure_optimizers()
         self.load_checkpoint()
         
-        # # reset optimizer if loaded from pretrained model
-        # if self.cfg.train.reset_optimizer:
-        #     self.configure_optimizers()  # reset optimizer
-        #     logger.info(f"[TRAINER] Optimizer was reset")
+        # reset optimizer if loaded from pretrained model
+        if self.cfg.train.reset_optimizer:
+            self.configure_optimizers()  # reset optimizer
+            logger.info(f"[TRAINER] Optimizer was reset")
 
         # if self.cfg.train.write_summary and self.device == 0:
         #     from torch.utils.tensorboard import SummaryWriter
@@ -222,25 +222,34 @@ class Trainer(object):
             logger.info('No checkpoint found, starting from scratch.')
 
             
-    def save_checkpoint(self):
+    def save_checkpoint(self, checkpoint_dir = None):
         """
         Save both SR and MICA model checkpoints into one file.
         """
-        checkpoint_dir = os.path.join(self.cfg.output_dir, self.cfg['path']['checkpoint'])
-        if not os.path.exists(checkpoint_dir):
-            os.makedirs(checkpoint_dir)
         
-        # Define a single file to save the checkpoint
-        checkpoint_path = os.path.join(checkpoint_dir, f'I{self.global_step}_E{self.current_epoch}_checkpoint.pth')
+        if not checkpoint_dir:
+            checkpoint_dir = os.path.join(self.cfg.output_dir, self.cfg['path']['checkpoint'])
+            
+            # Define a single file to save the checkpoint
+            checkpoint_path = os.path.join(checkpoint_dir, f'I{self.global_step}_E{self.current_epoch}_checkpoint.pth')
+            if not os.path.exists(checkpoint_dir):
+                os.makedirs(checkpoint_dir)
+        else:
+            checkpoint_path = checkpoint_dir
+            
+            
+        
+        
+        
         
         # Prepare dictionary to hold all information
         checkpoint = {
             # SR Model
-            'sr_model_state': self.model.sr_model.state_dict() if not isinstance(self.model.sr_model, nn.DataParallel) else self.model.sr_model.module.state_dict(),
+            'sr_model_state': self.model.sr_model.state_dict() if not isinstance(self.model.sr_model, (torch.nn.parallel.DataParallel, torch.nn.parallel.DistributedDataParallel)) else self.model.sr_model.module.state_dict(),
             'sr_optimizer_state': self.opt_sr.state_dict(),
             
             # MICA Model
-            'mica_model_state': self.model.mica_model.state_dict() if not isinstance(self.model.mica_model, nn.DataParallel) else self.model.mica_model.module.state_dict(),
+            'mica_model_state': self.model.mica_model.state_dict() if not isinstance(self.model.mica_model, (torch.nn.parallel.DataParallel, torch.nn.parallel.DistributedDataParallel)) else self.model.mica_model.module.state_dict(),
             'mica_optimizer_state': self.opt_mica.state_dict(),
             
             # Scheduler states
@@ -255,7 +264,8 @@ class Trainer(object):
         # Save the combined dictionary to one file
         torch.save(checkpoint, checkpoint_path)
         
-        logger.info(f'Saved a checkpoint in [{checkpoint_path}]')
+        if self.rank == 0:
+            logger.info(f'Saved a checkpoint in [{checkpoint_path}]')
 
 
             
@@ -311,6 +321,7 @@ class Trainer(object):
                             # self.model.feed_data(_sr_train_data)
                             # tensor_sr, visuals = self.model.get_tensor_sr_img(t_output = True, v_output = True)
                             # visuals = self.model.get_current_visuals()
+                            _sr_train_data = self.model.feed_data(_sr_train_data)
                             tensor_sr, visuals = self.model(_sr_train_data, t_output = True, v_output = True) # -> (3,16,16)
                             
                             
@@ -348,6 +359,7 @@ class Trainer(object):
                     
                     self.opt_sr.zero_grad()
                     self.opt_mica.zero_grad()
+                    sr_train_data = self.model.feed_data(sr_train_data)
                     l_sr, l_mica, losses = self.model.compute_loss(sr_train_data, input_mica, encoder_output, decoder_output)
                     
                     
@@ -593,9 +605,8 @@ class Trainer(object):
             with torch.no_grad():
                 for _,  val_data in tqdm(enumerate(self.val_iter), total=len(self.val_iter), desc="Processing training data"):
                     idx += 1
-                    self.model.feed_data(val_data)
-                    self.model.test_sr(continous=False)
-                    visuals = self.model.get_current_visuals()
+                    val_data = self.model.feed_data(val_data)
+                    visuals = self.model(val_data, v_output = True)
 
                     hr_img = Metrics.tensor2img(visuals['HR'])  # uint8
                     lr_img = Metrics.tensor2img(visuals['LR'])  # uint8

@@ -47,9 +47,9 @@ class ThreeDSuperResolutionModel(BaseModel):
         self.sr_model = define_G(sr_model_config)
         self.schedule_phase = None
         
-        if len(self.device) > 1:
-            self.sr_model = nn.DataParallel(self.sr_model, device_ids=self.device)
-            self.sr_model = self.sr_model.cuda(0).module
+        # if len(self.device) > 1:
+        #     self.sr_model = nn.DataParallel(self.sr_model, device_ids=self.device)
+        #     self.sr_model = self.sr_model.cuda(0).module
         
         self.sr_model = self.sr_model.cuda()
         
@@ -74,14 +74,14 @@ class ThreeDSuperResolutionModel(BaseModel):
             device = self.device
         )
         
-        if len(self.device) > 1:
-            self.arcface = torch.nn.DataParallel(self.arcface, device_ids=self.device)
-            self.arcface = self.arcface.cuda().module
-            self.mica_model = torch.nn.DataParallel(self.mica_model, device_ids=self.device)
-            self.mica_model = self.mica_model.cuda().module
-        else:
-            self.arcface = Arcface(pretrained_path=pretrained_path).cuda()
-            self.mica_model = self.mica_model.cuda()
+        # if len(self.device) > 1:
+        #     self.arcface = torch.nn.DataParallel(self.arcface, device_ids=self.device)
+        #     self.arcface = self.arcface.module
+        #     self.mica_model = torch.nn.DataParallel(self.mica_model, device_ids=self.device)
+        #     self.mica_model = self.mica_model.module
+            
+        self.arcface = Arcface(pretrained_path=pretrained_path).cuda()
+        self.mica_model = self.mica_model.cuda()
         
         
     # --------------------------- computing fn ----------------------------
@@ -251,8 +251,6 @@ class ThreeDSuperResolutionModel(BaseModel):
     def get_tensor_sr_img(self, x):
         
         wrapped_data = DictTensor(x)
-        wrapped_data = wrapped_data.to("cuda:0")  # Ensure the data is on the correct device
-
         
         self.SR = self.sr_model(wrapped_data, sr_out = True)
         
@@ -357,7 +355,7 @@ class ThreeDSuperResolutionModel(BaseModel):
         self.arcface.eval()
     
     def forward(self, x, t_output = None, v_output = None):
-        x = self.feed_data(x)
+        
         tensor_sr = None
         visuals = None
         if t_output:

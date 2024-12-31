@@ -112,5 +112,5 @@ def define_G(opt):
         init_weights(netG, init_type='orthogonal')
     if opt['gpu_ids'] and opt['distributed']:
         assert torch.cuda.is_available()
-        netG = nn.DataParallel(netG)
+        netG = nn.DataParallel(netG, device_ids=opt['gpu_ids'])
     return netG
