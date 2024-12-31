@@ -264,8 +264,9 @@ class Trainer(object):
         # Save the combined dictionary to one file
         torch.save(checkpoint, checkpoint_path)
         
-        if self.rank == 0:
-            logger.info(f'Saved a checkpoint in [{checkpoint_path}]')
+        # if self.rank == 0:
+        #     logger.info(f'Saved a checkpoint in [{checkpoint_path}]')
+        logger.info(f'Saved a checkpoint in [{checkpoint_path}]')
 
 
             
