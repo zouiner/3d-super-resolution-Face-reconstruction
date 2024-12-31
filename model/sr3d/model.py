@@ -366,7 +366,7 @@ class ThreeDSuperResolutionModel(BaseModel):
             else:
                 return tensor_sr
         elif v_output:
-            x_sr = self.test_sr()
+            x_sr = self.test_sr(x)
             visuals = self.get_current_visuals(x, x_sr)
             
             return visuals
