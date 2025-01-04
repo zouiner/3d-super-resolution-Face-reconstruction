@@ -1,3 +1,5 @@
+import os
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -11,6 +13,9 @@ from lib.MICA.micalib.renderer import MeshShapeRenderer
 
 from collections import OrderedDict
 from loguru import logger
+
+# for SR3
+import core.metrics as Metrics
 
 input_std = 127.5
 input_mean = 127.5
@@ -354,8 +359,8 @@ class ThreeDSuperResolutionModel(BaseModel):
         self.mica_model.eval()
         self.arcface.eval()
     
-    def forward(self, x, t_output = None, v_output = None):
-        
+    def SR3_training(self, x, t_output = None, v_output = None):
+        # Change name in other function(eg. training function)
         tensor_sr = None
         visuals = None
         if t_output:
@@ -370,7 +375,63 @@ class ThreeDSuperResolutionModel(BaseModel):
             visuals = self.get_current_visuals(x, x_sr)
             
             return visuals
+    
+    def forward(self, x, epoch, global_step):
+        visualizeTraining = global_step % self.cfg.train.vis_steps == 0
         
+        sr_train_data = self.preprocess_sr_data(x)
+        
+        # MICA # ------------------------------------------- 
+        images_list = []
+        arcface_list = []
+        _sr_train_data = sr_train_data
+        self.set_new_noise_schedule(self.cfg.sr.model.beta_schedule[self.cfg['phase']], schedule_phase= self.cfg['phase']) # for visual SR to fedd into mica
+        for i in range(len(x['SR'])):
+            for j in range(len(self.filter_and_slice_train_data(x, order = i)['SR'])):
+                _sr_train_data['SR'] = self.filter_and_slice_train_data(x, order = i)['SR'][j].unsqueeze(0)
+                _sr_train_data['HR'] = self.filter_and_slice_train_data(x, order = i)['HR'][j].unsqueeze(0)
+                _sr_train_data['Index'] = self.filter_and_slice_train_data(x, order = i)['Index'][j].unsqueeze(0)
+                _sr_train_data = self.feed_data(_sr_train_data)
+                tensor_sr, visuals = self.SR3_training(_sr_train_data, t_output = True, v_output = True) # -> (3,16,16)
+                
+                
+                sr_img = Metrics.tensor2img(visuals['SR'])
+                temp_sr_up_img = Metrics.tensor2tensor_img(tensor_sr) * 255.0
+                
+                
+                if self.cfg.mica.train.arcface_new:
+                    temp_arcface = self.create_tensor_blob(temp_sr_up_img)
+                    arcface_list.append(temp_arcface.clone().detach().requires_grad_(True))
+                
+                
+                if visualizeTraining:
+                    savepath = os.path.join(self.cfg.output_dir, 'train_images/{}_{}'.format(epoch, global_step))
+                    os.makedirs(savepath, exist_ok=True)
+                    Metrics.save_img(sr_img, '{}/{}_{}_sr.png'.format(savepath, i, j))
+                    hr_img = Metrics.tensor2img(visuals['HR'])
+                    inf_img = Metrics.tensor2img(visuals['INF'])
+                    Metrics.save_img(hr_img, '{}/{}_{}_hr.png'.format(savepath, i, j))
+                    Metrics.save_img(inf_img, '{}/{}_{}_inf.png'.format(savepath, i, j))
+                
+                sr_up_img = (cv2.resize(sr_img, (224, 224)))
+                images_list.append(sr_up_img.transpose(2,0,1)/255) # image no need to be tensor becasue mica use only arcface
+        
+        images_list = [torch.from_numpy(image) if isinstance(image, np.ndarray) else image for image in images_list]
+        images_array = torch.stack(images_list).view(x['image'].shape)
+        arcface_array = torch.stack(arcface_list).view(x['arcface'].shape)
+        
+        # Use the output from the SR feed to MICA
+        batch = self.filter_and_slice_train_data(x, 0, keys_to_keep_and_slice = {}, keys_to_keep = {'image', 'arcface', 'imagename', 'dataset', 'flame'})
+        batch['image'] = images_array
+        batch['arcface'] = arcface_array
+        
+        input_mica, opdict, encoder_output, decoder_output = self.training_MICA(batch, epoch)
+
+        sr_train_data = self.feed_data(sr_train_data)
+        l_sr, l_mica, losses = self.compute_loss(sr_train_data, input_mica, encoder_output, decoder_output)
+        
+        return l_sr, l_mica, losses, opdict
+
     
     # -------------------- preprocessing fn --------------------------
 
