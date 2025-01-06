@@ -18,7 +18,7 @@ sr:
       l_resolution: 8
       r_resolution: 16
       batch_size: 4
-      num_workers: 8
+      num_workers: 0
       use_shuffle: true
       data_len: -1
     val:
@@ -86,7 +86,7 @@ mica:
     training_data: [ 'LYHM' ]
     eval_data: [ 'LYHM' ]
     dataset_path: 'contents/'
-    num_workers: 4
+    num_workers: 0
     batch_size: 2
     K: 2
   train:

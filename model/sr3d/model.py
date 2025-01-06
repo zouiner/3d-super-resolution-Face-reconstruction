@@ -376,7 +376,7 @@ class ThreeDSuperResolutionModel(BaseModel):
             
             return visuals
     
-    def forward(self, x, epoch, global_step):
+    def forward(self, x, epoch, global_step, rank):
         visualizeTraining = global_step % self.cfg.train.vis_steps == 0
         
         sr_train_data = self.preprocess_sr_data(x)
@@ -404,7 +404,7 @@ class ThreeDSuperResolutionModel(BaseModel):
                     arcface_list.append(temp_arcface.clone().detach().requires_grad_(True))
                 
                 
-                if visualizeTraining:
+                if visualizeTraining and rank == 0:
                     savepath = os.path.join(self.cfg.output_dir, 'train_images/{}_{}'.format(epoch, global_step))
                     os.makedirs(savepath, exist_ok=True)
                     Metrics.save_img(sr_img, '{}/{}_{}_sr.png'.format(savepath, i, j))
