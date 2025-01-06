@@ -512,8 +512,6 @@ class Trainer(object):
                         lr_img = Metrics.tensor2img(visuals['LR'])  # uint8
                         fake_img = Metrics.tensor2img(visuals['INF'])  # uint8
                         sr_img = Metrics.tensor2img(visuals['SR'])  # uint8
-                        
-                        name = os.path.basename(val_data['path_sr'][0])[:-4] + '_' + str(k).zfill(len(str(self.cfg.sample)))
 
                         # MICA 
                         
@@ -537,8 +535,10 @@ class Trainer(object):
                         landmark_7 = landmark_51[[19, 22, 25, 28, 16, 31, 37]]
 
                         if self.cfg.sample == 1:
+                            name = os.path.basename(val_data['path_sr'][0])[:-4]
                             savepath = os.path.join(self.cfg.output_dir, 'val_images', '{}_{}'.format(self.current_epoch, self.global_step))
                         else:
+                            name = os.path.basename(val_data['path_sr'][0])[:-4] + '_' + str(k).zfill(len(str(self.cfg.sample)))
                             savepath = os.path.join(self.cfg.output_dir, 'val_images', '{}_{}_s{}'.format(self.current_epoch, self.global_step,self.cfg.sample))
                         
                         dst = Path(savepath, name)
