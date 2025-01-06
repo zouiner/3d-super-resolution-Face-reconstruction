@@ -21,6 +21,13 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '.'))
 import torch.distributed as dist
 
 def setup(rank, world_size):
+
+    os.environ['TORCH_NCCL_BLOCKING_WAIT'] = '1'
+    os.environ['TORCH_NCCL_ASYNC_ERROR_HANDLING'] = '1'
+    os.environ['NCCL_DEBUG'] = 'INFO'
+    os.environ['MASTER_ADDR'] = 'localhost'
+    os.environ['MASTER_PORT'] = '12355'
+
     dist.init_process_group(
         backend='nccl',  # Use NCCL for GPUs
         init_method='env://',  # Initialize using environment variables
@@ -70,10 +77,6 @@ def main(cfg):
     cudnn.enabled = True
     torch.cuda.empty_cache()
     # deterministic(rank) - MICA
-
-    # Set environment variables for distributed training
-    os.environ['MASTER_ADDR'] = 'localhost'  # or the IP of the master node
-    os.environ['MASTER_PORT'] = '12355'     # choose a free port
 
     world_size = torch.cuda.device_count()
 
