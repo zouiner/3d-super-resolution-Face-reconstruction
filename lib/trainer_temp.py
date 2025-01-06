@@ -539,7 +539,10 @@ class Trainer(object):
                         landmark_7 = landmark_51[[19, 22, 25, 28, 16, 31, 37]]
 
                         
-                        savepath = os.path.join(self.cfg.output_dir, 'val_images', '{}_{}_s{}'.format(self.current_epoch, self.global_step, self.cfg.sample))
+                        if self.cfg.sample == 1:
+                            savepath = os.path.join(self.cfg.output_dir, 'val_images', '{}_{}'.format(self.current_epoch, self.global_step))
+                        else:
+                            savepath = os.path.join(self.cfg.output_dir, 'val_images', '{}_{}_s{}'.format(self.current_epoch, self.global_step,self.cfg.sample))
                         
                         dst = Path(savepath, name)
                         dst.mkdir(parents=True, exist_ok=True)
