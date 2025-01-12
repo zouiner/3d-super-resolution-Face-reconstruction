@@ -251,7 +251,7 @@ def parse_args():
                         help='Run either train(training) or val(generation)', default='train')
     parser.add_argument('-s', '--sample', type=int, default=1)
     parser.add_argument('-ckt','--checkpoint', type=str, default=None)
-    parser.add_argument('-m','--model', type=str, default=None)
+    parser.add_argument('-m','--model', type=str, default='model3')
 
     args = parser.parse_args()
 

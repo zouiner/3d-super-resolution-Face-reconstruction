@@ -1,4 +1,4 @@
-name: "sr_sr3_VGGF2_8_32_n2n"
+name: "sr_sr3_VGGF2_8_32_model3"
 phase: "train"
 device_id: [0]
 

@@ -3,9 +3,15 @@ import math
 import numpy as np
 import cv2
 from torchvision.utils import make_grid
+import torchvision
 import torch
 import torch.nn.functional as F
 
+def img2sr_tensor(img, min_max=(-1, 1)):
+    totensor = torchvision.transforms.ToTensor()
+    img = totensor(img)
+    ret_img = img * (min_max[1] - min_max[0]) + min_max[0]
+    return ret_img.unsqueeze(0)
 
 def tensor2img(tensor, out_type=np.uint8, min_max=(-1, 1)):
     '''
