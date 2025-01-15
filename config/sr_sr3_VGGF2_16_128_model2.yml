@@ -1,6 +1,6 @@
-name: "sr_sr3_VGGF2_8_128_n2n"
+name: "sr_sr3_VGGF2_8_128_n2n_model2"
 phase: "train"
-device_id: [0,1]
+device_id: [0]
 
 path:
   log: "logs"

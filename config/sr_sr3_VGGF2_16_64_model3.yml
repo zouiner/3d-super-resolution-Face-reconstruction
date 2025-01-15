@@ -1,0 +1,116 @@
+name: "sr_sr3_VGGF2_8_64_n2n_model3"
+phase: "train"
+device_id: [0]
+
+path:
+  log: "logs"
+  tb_logger: "tb_logger"
+  checkpoint: "checkpoint"
+  
+sr:
+  pretrained_model_path: '/users/ps1510/scratch/Programs/3d-super-resolution-Face-reconstruction/sr_pretrained_model/8_64_n_600/I2000000_E11'
+  datasets:
+    train:
+      name: "LYHM_8_64"
+      mode: "HR"
+      dataroot: "contents/LYHM_8_64"
+      datatype: "img"
+      l_resolution: 8
+      r_resolution: 64
+      batch_size: 2
+      num_workers: 1
+      use_shuffle: true
+      data_len: -1
+    val:
+      name: "NoW_8_64"
+      mode: "LRHR"
+      dataroot: "contents/NoW_MICA_8_64"
+      datatype: "img"
+      l_resolution: 8
+      r_resolution: 64
+      data_len: -1
+  model:
+    which_model_G: "sr3"
+    finetune_norm: false
+    unet:
+      in_channel: 6
+      out_channel: 3
+      inner_channel: 64
+      channel_multiplier:
+        - 1
+        - 2
+        - 4
+        - 8
+        - 8
+      attn_res:
+        - 16
+      res_blocks: 2
+      dropout: 0.2
+    beta_schedule:
+      train:
+        schedule: "linear"
+        n_timestep: 600
+        linear_start: 0.000001
+        linear_end: 0.01
+      val:
+        schedule: "linear"
+        n_timestep: 600
+        linear_start: 0.000001
+        linear_end: 0.01
+    diffusion:
+      image_size: 224
+      channels: 3
+      conditional: true
+  train:
+    n_iter: 2000000 # 4000000
+    val_freq: 10000
+    save_checkpoint_freq: 1000
+    print_freq: 200
+    optimizer:
+      type: "adam"
+      lr: 0.0001
+    ema_scheduler:
+      step_start_ema: 5000
+      update_ema_every: 1
+      ema_decay: 0.9999
+# ----------------------------------------------------------------
+# MICA congifg
+mica:
+  pretrained_model_path: '' 
+  model:
+      use_pretrained: False
+      n_shape: 300
+      name: 'mica'
+  datasets:
+    root: '/users/ps1510/scratch/Programs/3d-super-resolution-Face-reconstruction/datasets/arcface'
+    training_data: [ 'LYHM' ]
+    eval_data: [ 'LYHM' ]
+    dataset_path: 'contents/'
+    num_workers: 1
+    batch_size: 1
+    K: 2
+  train:
+    lr: 1e-5
+    arcface_lr: 1e-5
+    weight_decay: 2e-4
+    use_mask: True
+    reset_optimizer: False
+    max_steps: 200000
+    log_steps: 50
+    val_steps: 100 #300
+    vis_steps: 100 #1200
+    val_save_img: 300 #1200
+    checkpoint_steps: 150 #1000
+    checkpoint_epochs_steps: 1000 #10000
+    arcface_new: True
+
+# -------------------------------------------------------------------------
+
+wandb:
+  project: "sr_vggf2"
+
+# python main_temp.py -p train -c config/sr_sr3_VGGF2_8_32.yml
+# python main_temp.py -p val -c config/sr_sr3_VGGF2_8_32.yml
+
+# On Slurm
+# python -m debugpy --listen 0.0.0.0:5678 --wait-for-client main_temp.py -p train -c config/sr_sr3_VGGF2_8_32.yml
