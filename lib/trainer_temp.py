@@ -153,10 +153,14 @@ class Trainer(object):
             load_path = load_path[-1]  # Get the latest checkpoint file (the last file in the sorted list)
         else:
             load_path = None  # No files found, set to None
+        
+        # !!!
+        # if self.cfg['phase'] == 'val' and os.path.exists(os.path.join(self.cfg.output_dir,'model.tar')) or os.path.exists(os.path.join(self.cfg.output_dir,'best_model.tar')):
             
-        if self.cfg['phase'] == 'val' and os.path.exists(os.path.join(self.cfg.output_dir,'model.tar')):
-            
-            load_path = os.path.join(self.cfg.output_dir, 'model.tar')
+        #     if os.path.exists(os.path.join(self.cfg.output_dir,'best_model.tar')):
+        #         load_path = os.path.join(self.cfg.output_dir, 'best_model.tar')
+        #     else:
+        #         load_path = os.path.join(self.cfg.output_dir, 'model.tar')
         
         if self.cfg.checkpoint:
             
@@ -234,10 +238,6 @@ class Trainer(object):
         else:
             checkpoint_path = checkpoint_dir
             
-            
-        
-        
-        
         
         # Prepare dictionary to hold all information
         checkpoint = {

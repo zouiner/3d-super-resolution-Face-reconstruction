@@ -7,6 +7,7 @@ from functools import partial
 import numpy as np
 from tqdm import tqdm
 
+from torch.utils.checkpoint import checkpoint
 
 def _warmup_beta(linear_start, linear_end, n_timestep, warmup_frac):
     betas = linear_end * np.ones(n_timestep, dtype=np.float64)
@@ -249,7 +250,9 @@ class GaussianDiffusion(nn.Module):
             ret_img = img
             # for i in tqdm(reversed(range(0, self.num_timesteps)), desc='sampling loop time step', total=self.num_timesteps):
             for i in reversed(range(0, self.num_timesteps)):
-                img = self.p_sample_learn(img, i)
+                # img = self.p_sample_learn(img, i)
+                # Use checkpoint to recompute p_sample_learn during backpropagation
+                img = checkpoint(self.p_sample_learn, img, i)  # Wrap with checkpoint
                 if i % sample_inter == 0:
                     ret_img = torch.cat([ret_img, img], dim=0)
         else:
@@ -259,7 +262,9 @@ class GaussianDiffusion(nn.Module):
             ret_img = x
             # for i in tqdm(reversed(range(0, self.num_timesteps)), desc='sampling loop time step', total=self.num_timesteps):
             for i in reversed(range(0, self.num_timesteps)):
-                img = self.p_sample_learn(img, i, condition_x=x)
+                # img = self.p_sample_learn(img, i, condition_x=x)
+                # Use checkpoint to recompute p_sample_learn during backpropagation
+                img = checkpoint(self.p_sample_learn, img, i, True, x)  # Wrap with checkpoint
                 if i % sample_inter == 0:
                     ret_img = torch.cat([ret_img, img], dim=0)
         if continous:
