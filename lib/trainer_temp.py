@@ -311,26 +311,30 @@ class Trainer(object):
 
                     l_mica = l_mica.cuda()
                     l_sr = l_sr.cuda()
-                    if self.cfg.model == 'model2':
-                        l_sr.backward()
-                        l_mica.backward()
                     
-                    else:
+                    l_sr.backward()
+                    l_mica.backward()
+                    
+                    # if self.cfg.model == 'model2':
+                    #     l_sr.backward()
+                    #     l_mica.backward()
+                    
+                    # else:
 
-                        # Combine losses
-                        alpha = 0.5 # !!! weight for loss contorlization
-                        beta = 0.5 # !!! weight for loss contorlization
-                        combined_loss = alpha * l_sr +  beta * l_mica
+                    #     # Combine losses
+                    #     alpha = 0.5 # !!! weight for loss contorlization
+                    #     beta = 0.5 # !!! weight for loss contorlization
+                    #     combined_loss = alpha * l_sr +  beta * l_mica
                         
-                        # Backward pass
-                        combined_loss.backward()
+                    #     # Backward pass
+                    #     combined_loss.backward()
                     
-                    losses['L1'] = l_sr
-                    losses['pred_verts_shape_canonical_diff'] = l_mica
-
                     # Update optimizers
                     self.opt_sr.step()
                     self.opt_mica.step()
+                    
+                    losses['L1'] = l_sr
+                    losses['pred_verts_shape_canonical_diff'] = l_mica
                     
                     
                     if self.global_step % self.cfg.train.log_steps == 0:

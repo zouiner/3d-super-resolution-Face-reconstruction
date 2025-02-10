@@ -341,7 +341,7 @@ class ThreeDSuperResolutionModel(BaseModel):
     def train(self):
         self.sr_model.train()
         self.mica_model.train()
-        self.arcface.train()
+        # self.arcface.train()
     
     def eval(self):
         self.sr_model.eval()

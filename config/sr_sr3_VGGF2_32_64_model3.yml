@@ -1,4 +1,4 @@
-name: "sr_sr3_VGGF2_32_64_n2n_model3"
+name: "sr_sr3_VGGF2_32_64_n2n_model3_noArc_noCombined"
 phase: "train"
 device_id: [0]
 
@@ -8,7 +8,7 @@ path:
   checkpoint: "checkpoint"
   
 sr:
-  pretrained_model_path: '/users/ps1510/scratch/Programs/3d-super-resolution-Face-reconstruction/sr_pretrained_model/8_32_n_100/I1490000_E596'
+  pretrained_model_path: '/users/ps1510/scratch/Programs/3d-super-resolution-Face-reconstruction/sr_pretrained_model/32_64_n_100/I1490000_E596'
   datasets:
     train:
       name: "LYHM_32_64"

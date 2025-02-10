@@ -1,12 +1,12 @@
 #!/bin/bash
-#SBATCH --job-name=train_32_64_model3             # Job name
+#SBATCH --job-name=val_32_64_model3             # Job name
 #SBATCH --mail-type=BEGIN,END,FAIL             # Mail events (NONE, BEGIN, END, FAIL, ALL)
 #SBATCH --mail-user=moonlight.dum1@gmail.com          # Where to send mail
 #SBATCH --ntasks=1                             # Run a single task...
 #SBATCH --cpus-per-task=1                      # ...with a single CPU
 #SBATCH --mem=16gb                             # Job memory request
 #SBATCH --time=3-00:00:00                      # Time limit (DD-HH:MM:SS)
-#SBATCH --output=cuda_log/cuda_job_sr3d_32_64_model3_%j.log      # Standard output and error log
+#SBATCH --output=cuda_log/cuda_job_sr3d_32_64_model3_GC_val_%j.log      # Standard output and error log
 #SBATCH --partition=gpu                        # Select the GPU nodes... (, interactive, gpu , gpuplus)  
 #SBATCH --gres=gpu:1                          # ...and the Number of GPUs
 #SBATCH --account=its-gpu-2023                 # Run job under project <project>
@@ -27,7 +27,8 @@ conda activate 3dsr # Your conda environment here
 # or source your .venv environment here if using venv
 
 # now run the python script
-# python main_temp.py -p val -c config/sr_sr3_VGGF2_8_128_model2.yml -s 15
-python main_temp.py -p train -c config/sr_sr3_VGGF2_32_64_model3.yml 
+# python main_temp.py -p val -c config/sr_sr3_VGGF2_8_32_model3_gradientCheckpoint.yml -s 15
+# python main_temp.py -p train -c config/sr_sr3_VGGF2_32_64_model3.yml 
+python main_temp.py -p val -c config/sr_sr3_VGGF2_32_64_model3.yml -s 15
 
 # to run the command: sbatch run.sh
