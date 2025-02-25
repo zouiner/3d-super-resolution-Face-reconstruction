@@ -479,13 +479,15 @@ class ThreeDSuperResolutionModel(BaseModel):
                     
                     if self.cfg.mica.train.arcface_new:
                         temp_arcface = self.create_tensor_blob(temp_sr_up_img)
-                        arcface_list.append(temp_arcface.clone().detach().requires_grad_(True))
+                        # arcface_list.append(temp_arcface.clone().detach().requires_grad_(True))
+                        arcface_list.append(temp_arcface.detach().requires_grad_(True))
                     
 
                     sr_up_img = (cv2.resize(sr_img, (224, 224)))
                     images_list.append(sr_up_img.transpose(2,0,1)/255) # image no need to be tensor becasue mica use only arcface
-                    tensor_sr = tensor_sr.unsqueeze(0) * (2) + -1 # -> change te range to be (-1,1)
-                    new_sr.append(tensor_sr.clone().detach().requires_grad_(True))
+                    tensor_sr = tensor_sr.unsqueeze(0)
+                    # new_sr.append(tensor_sr.clone().detach().requires_grad_(True))
+                    new_sr.append(tensor_sr.detach().requires_grad_(True))
 
                 
                     
