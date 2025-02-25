@@ -1,4 +1,4 @@
-name: "sr_sr3_VGGF2_8_16_n2n"
+name: "sr_sr3_VGGF2_test_code_delete"
 phase: "train"
 device_id: [1,2,3]
 
@@ -18,7 +18,7 @@ sr:
       l_resolution: 8
       r_resolution: 16
       batch_size: 4
-      num_workers: 8
+      num_workers: 4
       use_shuffle: true
       data_len: -1
     val:
@@ -64,7 +64,7 @@ sr:
   train:
     n_iter: 1520000 # 4000000
     val_freq: 10000
-    save_checkpoint_freq: 1000
+    save_checkpoint_freq: 2000
     print_freq: 200
     optimizer:
       type: "adam"
@@ -82,7 +82,7 @@ mica:
       n_shape: 300
       name: 'mica'
   datasets:
-    root: '/shared/storage/cs/staffstore/ps1510/Tutorial/3d-super-resolution-Face-reconstruction/datasets/arcface'
+    root: '/shared/storage/cs/staffstore/ps1510/Tutorial/3d-super-resolution-Face-reconstruction/datasets/temp_arcface'
     training_data: [ 'LYHM' ]
     eval_data: [ 'LYHM' ]
     dataset_path: 'contents/'
@@ -95,13 +95,13 @@ mica:
     weight_decay: 2e-4
     use_mask: True
     reset_optimizer: False
-    max_steps: 200000
+    max_steps: 160000
     log_steps: 50
     val_steps: 100 #300
-    vis_steps: 100 #1200
+    vis_steps: 500 #1200
     val_save_img: 300 #1200
-    checkpoint_steps: 150 #1000
-    checkpoint_epochs_steps: 1000 #10000
+    checkpoint_steps: 2000 #1000
+    checkpoint_epochs_steps: 2000 #10000
     arcface_new: True
 
 # -------------------------------------------------------------------------
@@ -110,4 +110,6 @@ wandb:
   project: "sr_vggf2"
 
 # python main_temp.py -p train -c config/sr_sr3_VGGF2_test_code.yml
-# python main_temp.py -p val -c config/sr_sr3_VGGF2_test_code.yml
+# python main_temp.py -p val -c config/sr_sr3_VGGF2_test_code.yml -s 15
+
+# python main_temp.py -p val -c config/sr_sr3_VGGF2_8_16.yml -s 15 -ckt /shared/storage/cs/staffstore/ps1510/Tutorial/3d-super-resolution-Face-reconstruction/Output/sr_sr3_VGGF2_8_16_n2n/checkpoint/I1566000_E1286_checkpoint.pth

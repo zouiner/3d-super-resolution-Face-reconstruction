@@ -77,8 +77,6 @@ class Generator(nn.Module):
         self.regressor = DDP(self.regressor.to(self.device), device_ids=[self.rank], output_device=self.rank)
               
         if torch.cuda.device_count() > 1:
-            # self.regressor = torch.nn.DataParallel(self.regressor, device_ids=self.device)
-            # self.regressor = self.regressor.module
             self.generator = torch.nn.DataParallel(self.generator, device_ids=[self.device.index])
             self.generator = self.generator.module
         else:

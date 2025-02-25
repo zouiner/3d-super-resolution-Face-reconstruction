@@ -20,8 +20,10 @@ cfg.debug = None
 cfg.enable_wandb = None
 cfg.log_wandb_ckpt = None
 cfg.log_eval = None
+cfg.sample = 1
+cfg.checkpoint = None
 
-cfg.output_dir = "/users/ps1510/scratch/Programs/3d-super-resolution-Face-reconstruction/Output"
+cfg.output_dir = "/shared/storage/cs/staffstore/ps1510/Tutorial/3d-super-resolution-Face-reconstruction/Output"
 
 # ---------------------------------------------------------------------------- #
 # Options for path
@@ -129,7 +131,7 @@ cfg.mica.model.layers = 8
 cfg.mica.model.hidden_layers_size = 256
 cfg.mica.model.mapping_layers = 3
 cfg.mica.model.use_pretrained = True
-cfg.mica.model.arcface_pretrained_model = '/users/ps1510/scratch/Programs/3d-super-resolution-Face-reconstruction/data/pretrained/backbone.pth'
+cfg.mica.model.arcface_pretrained_model = '/shared/storage/cs/staffstore/ps1510/Tutorial/3d-super-resolution-Face-reconstruction/data/pretrained/backbone.pth'
 # got from https://onedrive.live.com/?authkey=%21AFZjr283nwZHqbA&id=4A83B6B633B029CC%215582&cid=4A83B6B633B029CC
 # cfg.model.arcface_pretrained_model = '/scratch/is-rg-ncs/models_weights/arcface-torch/backbone100.pth'
 cfg.mica.model.n_pose = 6 # add by patipol
@@ -243,11 +245,8 @@ def parse_args():
                         help='JSON file for configuration')
     parser.add_argument('-p', '--phase', type=str, choices=['train', 'val'],
                         help='Run either train(training) or val(generation)', default='train')
-    parser.add_argument('-gpu', '--gpu_ids', type=str, default=None)
-    parser.add_argument('-debug', '-d', action='store_true')
-    parser.add_argument('-enable_wandb', action='store_true')
-    parser.add_argument('-log_wandb_ckpt', action='store_true')
-    parser.add_argument('-log_eval', action='store_true')
+    parser.add_argument('-s', '--sample', type=int, default=1)
+    parser.add_argument('-ckt','--checkpoint', type=str, default=None)
 
     args = parser.parse_args()
 
@@ -260,7 +259,13 @@ def parse_args():
         cfg = update_cfg(cfg, args.config)
         cfg.cfg_file = cfg_file
         
-    cfg.phase = args.phase  
+    # Override configuration with command-line arguments
+    if args.phase is not None:
+        cfg.phase = args.phase
+    if args.sample is not None:
+        cfg.sample = args.sample
+    if args.checkpoint is not None:
+        cfg.checkpoint = args.checkpoint 
 
     cfg.output_dir = os.path.join(cfg.output_dir, cfg.name)
     

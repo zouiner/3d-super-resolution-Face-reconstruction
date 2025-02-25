@@ -1,6 +1,6 @@
-name: "sr_sr3_VGGF2_8_16_n2n"
+name: "sr_sr3_VGGF2_8_16_model2"
 phase: "train"
-device_id: [1,2,3]
+device_id: [0,1,2,3]
 
 path:
   log: "logs"
@@ -110,6 +110,6 @@ wandb:
   project: "sr_vggf2"
 
 # python main_temp.py -p train -c config/sr_sr3_VGGF2_8_16.yml
-# python main_temp.py -p val -c config/sr_sr3_VGGF2_8_16.yml -s 15
+# python main_temp.py -p val -c config/sr_sr3_VGGF2_8_16.yml
 
 # python main_temp.py -p val -c config/sr_sr3_VGGF2_8_16.yml -s 15 -ckt /shared/storage/cs/staffstore/ps1510/Tutorial/3d-super-resolution-Face-reconstruction/Output/sr_sr3_VGGF2_8_16_n2n/checkpoint/I1566000_E1286_checkpoint.pth

@@ -72,6 +72,10 @@ class Trainer(object):
         self.rank = rank
         self.world_size = world_size
         
+        self.sample = self.cfg.sample
+        
+        self.checkpoint = self.cfg.checkpoint
+        
         self.device = [i for i in range(len(self.cfg.device_id))]
         self.batch_size_sr = self.cfg.sr.datasets.train.batch_size
         self.l_image_size = self.cfg.sr.datasets.train.l_resolution
@@ -171,6 +175,9 @@ class Trainer(object):
         if self.cfg['phase'] == 'val' and os.path.exists(os.path.join(self.cfg.output_dir,'model.tar')):
             
             load_path = os.path.join(self.cfg.output_dir, 'model.tar')
+        
+        if self.checkpoint:
+            load_path = self.checkpoint
 
 
         if load_path and os.path.exists(load_path):
@@ -323,21 +330,18 @@ class Trainer(object):
                     images_list = []
                     arcface_list = []
                     _sr_train_data = sr_train_data
-                    self.model.set_new_noise_schedule(self.cfg.sr.model.beta_schedule.val, schedule_phase='train') # for visual SR to feed into mica
+                    self.model.set_new_noise_schedule(self.cfg.sr.model.beta_schedule.train, schedule_phase='train') # for visual SR to feed into mica
                     for i in range(len(train_data['SR'])):
                         for j in range(len(self.filter_and_slice_train_data(train_data, order = i)['SR'])):
                             _sr_train_data['SR'] = self.filter_and_slice_train_data(train_data, order = i)['SR'][j].unsqueeze(0)
                             _sr_train_data['HR'] = self.filter_and_slice_train_data(train_data, order = i)['HR'][j].unsqueeze(0)
                             _sr_train_data['Index'] = self.filter_and_slice_train_data(train_data, order = i)['Index'][j].unsqueeze(0)
                             self.model.feed_data(_sr_train_data)
-                            # self.model.test_sr(continous=False)
-                            tensor_sr = self.model.get_tensor_sr_img()
-                            visuals = self.model.get_current_visuals()
+                            tensor_sr = self.model.get_tensor_sr_img() # (3,16,16)
+                            visuals = self.model.get_current_visuals() # (3,16,16)
                             
                             sr_img = Metrics.tensor2img(visuals['SR'])
-                            # sr_up_img = (cv2.resize(sr_img, (224, 224)))
                             temp_sr_up_img = Metrics.tensor2tensor_img(tensor_sr) * 255.0
-                            # temp_sr_up_img = Metrics.tensor2tensor_img(visuals['SR']) * 255.0
                             
                             
                             if self.cfg.mica.train.arcface_new:
@@ -384,27 +388,16 @@ class Trainer(object):
                     l_mica = l_mica.to(self.rank)
                     l_sr = l_sr.to(self.rank)
                     
-                    # Backpropagation for model2
-                    # loss2.backward(retain_graph=True)  # Retain the graph for model1 gradients
+                    # Combine losses
+                    combined_loss = l_sr + l_mica
+                    combined_loss.backward()
 
-                    # # Backpropagation for model1
-                    # loss1.backward()
-
-                    # # Step the optimizers
-                    # optimizer1.step()
-                    # optimizer2.step()
-                    
-                    loss_mica = l_mica
-                    losses['L1'] = l_sr
-                    
-                    # !! edit !!
-                    # self.model.sr_model.eval()
-                    # self.model.arcface.eval()
-                    all_loss = loss_mica + l_sr
-                    gradient = torch.ones_like(all_loss)
-                    all_loss.backward(gradient)
-                    self.opt_mica.step()
                     self.opt_sr.step()
+                    self.opt_mica.step()
+                    
+                    losses['L1'] = l_sr
+                    losses['pred_verts_shape_canonical_diff'] = l_mica
+                    losses['all_loss'] = combined_loss
                     
                     
                     if self.global_step % self.cfg.train.log_steps == 0:
@@ -512,92 +505,98 @@ class Trainer(object):
             avg_psnr = 0.0
             avg_ssim = 0.0
             idx = 0
-            faces = self.model.mica_model.generator.faces_tensor.cpu()
+            faces = self.model.mica_model.module.generator.faces_tensor.cpu()
             self.model.testing = True
             self.model.eval()
             for _,  val_data in tqdm(enumerate(self.val_iter), total=len(self.val_iter), desc="Processing training data"):
                 idx += 1
-                self.model.feed_data(val_data)
-                self.model.test_sr(continous=False)
-                visuals = self.model.get_current_visuals()
+                for k in range(self.sample):
+                    self.model.feed_data(val_data)
+                    self.model.test_sr(continous=False)
+                    visuals = self.model.get_current_visuals()
 
-                hr_img = Metrics.tensor2img(visuals['HR'])  # uint8
-                lr_img = Metrics.tensor2img(visuals['LR'])  # uint8
-                fake_img = Metrics.tensor2img(visuals['INF'])  # uint8
-                sr_img = Metrics.tensor2img(visuals['SR'])  # uint8
-                
-                name = os.path.basename(val_data['path_sr'][0])[:-4]
+                    hr_img = Metrics.tensor2img(visuals['HR'])  # uint8
+                    lr_img = Metrics.tensor2img(visuals['LR'])  # uint8
+                    fake_img = Metrics.tensor2img(visuals['INF'])  # uint8
+                    sr_img = Metrics.tensor2img(visuals['SR'])  # uint8
+                    
+                    name = os.path.basename(val_data['path_sr'][0])[:-4]
 
-                # MICA 
-                
-                sr_up_img = cv2.resize(sr_img, (224, 224))
-                temp_arcface = self.model.create_arcface_embeddings(sr_up_img)
-                temp_arcface = torch.tensor(temp_arcface).cuda()[None]
-                
-                sr_up_img = sr_up_img / 255.
-                sr_up_img = sr_up_img.transpose(2, 0, 1)
-                sr_up_img = torch.tensor(sr_up_img).cuda()[None]
-                
-                self.model.eval()
-                
-                encoder_output = self.model.encode_mica(sr_up_img, temp_arcface)
-                opdict = self.model.decode_mica(encoder_output)
-                meshes = opdict['pred_canonical_shape_vertices']
-                code = opdict['pred_shape_code']
-                lmk = self.model.flame.compute_landmarks(meshes)
+                    # MICA 
+                    
+                    sr_up_img = cv2.resize(sr_img, (224, 224))
+                    temp_arcface = self.model.create_arcface_embeddings(sr_up_img)
+                    temp_arcface = torch.tensor(temp_arcface).cuda()[None]
+                    
+                    sr_up_img = sr_up_img / 255.
+                    sr_up_img = sr_up_img.transpose(2, 0, 1)
+                    sr_up_img = torch.tensor(sr_up_img).cuda()[None]
+                    
+                    self.model.eval()
+                    
+                    encoder_output = self.model.encode_mica(sr_up_img, temp_arcface)
+                    opdict = self.model.decode_mica(encoder_output)
+                    meshes = opdict['pred_canonical_shape_vertices']
+                    code = opdict['pred_shape_code']
+                    lmk = self.model.flame.compute_landmarks(meshes)
 
-                mesh = meshes[0]
-                landmark_51 = lmk[0, 17:]
-                landmark_7 = landmark_51[[19, 22, 25, 28, 16, 31, 37]]
-
-                if self.rank == 0:
-                    savepath = os.path.join(self.cfg.output_dir, 'val_images', str(self.global_step))
-                    
-                    dst = Path(savepath, name)
-                    dst.mkdir(parents=True, exist_ok=True)
-                    
-                    # Save meshes
-                    v = torch.reshape(meshes, (-1, 3))
-                    scaled = v * 1000.0
-                    save_ply(f'{dst}/mesh.ply', scaled.cpu(), self.model.render.faces[0].cpu())
-                    
-                    trimesh.Trimesh(vertices=mesh.detach().cpu().numpy() * 1000.0, faces=faces, process=False).export(f'{dst}/mesh.ply')  # save in millimeters
-                    trimesh.Trimesh(vertices=mesh.detach().cpu().numpy() * 1000.0, faces=faces, process=False).export(f'{dst}/mesh.obj')
-                    np.save(f'{dst}/identity', code[0].detach().cpu().numpy())
-                    np.save(f'{dst}/kpt7', landmark_7.detach().cpu().numpy() * 1000.0)
-                    np.save(f'{dst}/kpt68', lmk.detach().cpu().numpy() * 1000.0)
-                    
-                    pred = self.model.render.render_mesh(meshes)
-                    
-                    dict = {
-                            'pred': pred,
-                            'images': F.interpolate(sr_up_img, size=(512, 512), mode='bilinear', align_corners=False),
-                            'GT': F.interpolate(visuals['HR'], size=(512, 512), mode='bilinear', align_corners=False)
-                        }
-
-                    util.visualize_grid(dict, f'{dst}/render.jpg', size=512)
-                    
-                    
-                    Metrics.save_img(sr_img, '{}/{}_sr.png'.format(dst, name))
-
-                    Metrics.save_img(
-                        hr_img, '{}/{}_hr.png'.format(dst, name))
-                    Metrics.save_img(
-                        fake_img, '{}/{}_inf.png'.format(dst, name))
-                    Metrics.save_img(
-                        lr_img, '{}/{}_lr.png'.format(dst, name))
+                    mesh = meshes[0]
+                    landmark_51 = lmk[0, 17:]
+                    landmark_7 = landmark_51[[19, 22, 25, 28, 16, 31, 37]]
 
                     if self.rank == 0:
-                        # generation
-                        eval_psnr = Metrics.calculate_psnr(Metrics.tensor2img(visuals['SR']), hr_img)
-                        eval_ssim = Metrics.calculate_ssim(Metrics.tensor2img(visuals['SR']), hr_img)
+                        if self.cfg.sample > 1:
+                            savepath = os.path.join(self.cfg.output_dir, 'val_images', str(self.global_step) + '_' + str(self.cfg.sample))
+                        else:
+                            savepath = os.path.join(self.cfg.output_dir, 'val_images', str(self.global_step))
+                        
+                        dst = Path(savepath, name)
+                        if self.sample > 1:
+                            dst = dst.with_name(dst.name + "_" + str(k))
+                        dst.mkdir(parents=True, exist_ok=True)
+                        
+                        # Save meshes
+                        v = torch.reshape(meshes, (-1, 3))
+                        scaled = v * 1000.0
+                        save_ply(f'{dst}/mesh.ply', scaled.cpu(), self.model.render.faces[0].cpu())
+                        
+                        trimesh.Trimesh(vertices=mesh.detach().cpu().numpy() * 1000.0, faces=faces, process=False).export(f'{dst}/mesh.ply')  # save in millimeters
+                        trimesh.Trimesh(vertices=mesh.detach().cpu().numpy() * 1000.0, faces=faces, process=False).export(f'{dst}/mesh.obj')
+                        np.save(f'{dst}/identity', code[0].detach().cpu().numpy())
+                        np.save(f'{dst}/kpt7', landmark_7.detach().cpu().numpy() * 1000.0)
+                        np.save(f'{dst}/kpt68', lmk.detach().cpu().numpy() * 1000.0)
+                        
+                        pred = self.model.render.render_mesh(meshes)
+                        
+                        dict = {
+                                'pred': pred,
+                                'images': F.interpolate(sr_up_img, size=(512, 512), mode='bilinear', align_corners=False),
+                                'GT': F.interpolate(visuals['HR'], size=(512, 512), mode='bilinear', align_corners=False)
+                            }
 
-                        avg_psnr += eval_psnr
-                        avg_ssim += eval_ssim
-                    # compute_loss mica
-                    if self.wandb_logger and self.cfg['log_eval'] and self.rank == 0:
-                        self.wandb_logger.log_eval_data(fake_img, Metrics.tensor2img(visuals['SR'][-1]), hr_img, eval_psnr, eval_ssim)
-            
+                        util.visualize_grid(dict, f'{dst}/render.jpg', size=512)
+                        
+                        
+                        Metrics.save_img(sr_img, '{}/{}_sr.png'.format(dst, name))
+
+                        Metrics.save_img(
+                            hr_img, '{}/{}_hr.png'.format(dst, name))
+                        Metrics.save_img(
+                            fake_img, '{}/{}_inf.png'.format(dst, name))
+                        Metrics.save_img(
+                            lr_img, '{}/{}_lr.png'.format(dst, name))
+
+                        if self.rank == 0:
+                            # generation
+                            eval_psnr = Metrics.calculate_psnr(Metrics.tensor2img(visuals['SR']), hr_img)
+                            eval_ssim = Metrics.calculate_ssim(Metrics.tensor2img(visuals['SR']), hr_img)
+
+                            avg_psnr += eval_psnr
+                            avg_ssim += eval_ssim
+                        # compute_loss mica
+                        if self.wandb_logger and self.cfg['log_eval'] and self.rank == 0:
+                            self.wandb_logger.log_eval_data(fake_img, Metrics.tensor2img(visuals['SR'][-1]), hr_img, eval_psnr, eval_ssim)
+                
             if self.rank == 0:
                 avg_psnr = avg_psnr / idx
                 avg_ssim = avg_ssim / idx

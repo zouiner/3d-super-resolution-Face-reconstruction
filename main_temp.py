@@ -61,8 +61,8 @@ def main(rank, world_size, cfg):
 
 def setup(rank, world_size):
     # Set environment variables for master address and port
-    os.environ['MASTER_ADDR'] = '127.0.0.1'
-    os.environ['MASTER_PORT'] = '29501'
+    os.environ['MASTER_ADDR'] = '127.0.0.2'
+    os.environ['MASTER_PORT'] = '29500'
     os.environ["LOCAL_RANK"] = "0"
 
     # Initialize the process group

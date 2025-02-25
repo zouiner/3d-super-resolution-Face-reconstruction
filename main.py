@@ -56,7 +56,7 @@ def main(cfg):
     cudnn.benchmark = True
     cudnn.deterministic = False
     cudnn.enabled = True
-    # torch.cuda.empty_cache()
+    torch.cuda.empty_cache()
     # deterministic(rank) - MICA
 
     from lib.trainer import Trainer
@@ -78,4 +78,4 @@ if __name__ == '__main__':
     main(cfg)
 
 # run:
-# python main.py -p train -c config/sr_sr3_VGGF2_32_128.yml
+# python main.py -p train -c config/sr_sr3_VGGF2_8_16.yml
