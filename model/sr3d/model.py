@@ -515,7 +515,7 @@ class ThreeDSuperResolutionModel(BaseModel):
             input_sr['SR'] = torch.cat(new_sr, dim=0)
         
         images_list = [torch.from_numpy(image) if isinstance(image, np.ndarray) else image for image in images_list]
-        images_array = torch.stack(images_list).view(x['image'].shape)
+        images_array = torch.stack(images_list).view(int(len(images_list) / self.cfg['mica']['datasets']['K']), self.cfg['mica']['datasets']['K'], 3, images_list[0].shape[1], images_list[0].shape[2])
         arcface_array = torch.stack(arcface_list).view(x['arcface'].shape)
 
         input_sr = self.feed_data(input_sr)

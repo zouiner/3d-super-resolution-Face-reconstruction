@@ -35,7 +35,7 @@ import cv2
 from PIL import Image
 
 
-ori_path = '/users/ps1510/scratch/Programs/3d-super-resolution-Face-reconstruction/datasets/arcface/LYHM/arcface_input'
+ori_path = '/shared/storage/cs/staffstore/ps1510/Tutorial/3d-super-resolution-Face-reconstruction/datasets/arcface/LYHM/arcface_input'
 
 class BaseDataset(Dataset, ABC):
     def __init__(self, name, config, device, isEval, need_LR=False, split='train'):
@@ -74,7 +74,8 @@ class BaseDataset(Dataset, ABC):
 
     def dataroot_sr(self):
         train_dataname = self.config.mica.datasets.training_data[0]
-        self.dataroot = os.path.join(self.config.mica.datasets.root, train_dataname + '_' + str(self.l_res) + '_' + str(self.r_res), 'arcface_input')
+        # self.dataroot = os.path.join(self.config.mica.datasets.root, train_dataname + '_' + str(self.l_res) + '_' + str(self.r_res), 'arcface_input')
+        self.dataroot = self.config.sr.datasets[self.config.phase]['dataroot']
     
     def scan_img_arcface(self, path, folder):
         train_dataname = self.config.mica.datasets.training_data[0]
@@ -211,7 +212,7 @@ class BaseDataset(Dataset, ABC):
             sr_images, gt_images, lr_images, params_path = self.face_dict[actor]
         else:
             sr_images, gt_images, params_path = self.face_dict[actor]
-        sr_images = [Path(self.dataset_root, self.name + self.name_res, self.image_folder, self.name_sr(path, 'sr' + self.name_res)) for path in sr_images]        
+        sr_images = [Path(self.dataset_root[:-17], self.config.sr.datasets[self.config.phase]['dataroot'], self.name_sr(path, 'sr' + self.name_res)) for path in sr_images]        
         sample_list = np.array(np.random.choice(range(len(sr_images)), size=self.K, replace=False))
         K = self.K
         if self.isEval:

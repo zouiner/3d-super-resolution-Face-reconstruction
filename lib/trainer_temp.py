@@ -169,7 +169,7 @@ class Trainer(object):
 
         if load_path and os.path.exists(load_path):
             logger.info(f'Loading combined checkpoint from [{load_path}]')
-            checkpoint = torch.load(load_path, map_location=torch.device('cpu'), weights_only=True)
+            checkpoint = torch.load(load_path, map_location=torch.device('cpu'))
 
             # Add `module.` prefix if the model is distributed
             sr_state_dict = checkpoint['sr_model_state']

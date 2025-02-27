@@ -1,6 +1,6 @@
 name: "sr_sr3_VGGF2_32_64_n2n_model2"
 phase: "train"
-device_id: [0]
+device_id: [5]
 
 path:
   log: "logs"
@@ -8,7 +8,7 @@ path:
   checkpoint: "checkpoint"
   
 sr:
-  pretrained_model_path: '/users/ps1510/scratch/Programs/3d-super-resolution-Face-reconstruction/sr_pretrained_model/8_32_n_100/I1490000_E596'
+  pretrained_model_path: '/shared/storage/cs/staffstore/ps1510/Tutorial/Image-Super-Resolution-via-Iterative-Refinement/experiments/sr_vggf2_32_64_n_100_250205_153718/checkpoint/I2000000_E800'
   datasets:
     train:
       name: "LYHM_32_64"
@@ -62,7 +62,7 @@ sr:
       channels: 3
       conditional: true
   train:
-    n_iter: 1490000 # 4000000
+    n_iter: 2000000 # 4000000
     val_freq: 10000
     save_checkpoint_freq: 1000
     print_freq: 200
@@ -82,7 +82,7 @@ mica:
       n_shape: 300
       name: 'mica'
   datasets:
-    root: '/users/ps1510/scratch/Programs/3d-super-resolution-Face-reconstruction/datasets/arcface'
+    root: '/shared/storage/cs/staffstore/ps1510/Tutorial/3d-super-resolution-Face-reconstruction/datasets/arcface'
     training_data: [ 'LYHM' ]
     eval_data: [ 'LYHM' ]
     dataset_path: 'contents/'
@@ -95,7 +95,7 @@ mica:
     weight_decay: 2e-4
     use_mask: True
     reset_optimizer: False
-    max_steps: 200000
+    max_steps: 160000
     log_steps: 50
     val_steps: 100 #300
     vis_steps: 100 #1200
@@ -109,7 +109,7 @@ mica:
 wandb:
   project: "sr_vggf2"
 
-# python main_temp.py -p train -c config/sr_sr3_VGGF2_32_64_model3.yml
+# python main_temp.py -p train -c config/sr_sr3_VGGF2_32_64_model2.yml -m model2
 # python main_temp.py -p val -c config/sr_sr3_VGGF2_32_64_model3.yml
 
 # On Slurm

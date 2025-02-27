@@ -1,6 +1,6 @@
-name: "sr_sr3_VGGF2_8_128_n2n_model3"
+name: "sr_sr3_VGGF2_32_128_n2n_model3"
 phase: "train"
-device_id: [3]
+device_id: [2]
 
 path:
   log: "logs"
@@ -8,25 +8,25 @@ path:
   checkpoint: "checkpoint"
   
 sr:
-  pretrained_model_path: '/shared/storage/cs/staffstore/ps1510/Tutorial/Image-Super-Resolution-via-Iterative-Refinement/experiments/sr_vggf2_8_128_test_n_1000_241106_014717/checkpoint/I1640000_E9'
+  pretrained_model_path: '/shared/storage/cs/staffstore/ps1510/Tutorial/Image-Super-Resolution-via-Iterative-Refinement/experiments/sr_vggf2_32_128_n_100_250205_154141/checkpoint/I2000000_E800'
   datasets:
     train:
-      name: "LYHM_8_128"
+      name: "LYHM_32_128"
       mode: "HR"
-      dataroot: "contents/LYHM_8_128"
+      dataroot: "contents/LYHM_32_128"
       datatype: "img"
-      l_resolution: 8
+      l_resolution: 32
       r_resolution: 128
-      batch_size: 8
-      num_workers: 1
+      batch_size: 2
+      num_workers: 0
       use_shuffle: true
       data_len: -1
     val:
-      name: "NoW_8_128"
+      name: "NoW_32_128"
       mode: "LRHR"
-      dataroot: "contents/NoW_MICA_8_128"
+      dataroot: "contents/NoW_MICA_32_128"
       datatype: "img"
-      l_resolution: 8
+      l_resolution: 32
       r_resolution: 128
       data_len: -1
   model:
@@ -49,12 +49,12 @@ sr:
     beta_schedule:
       train:
         schedule: "linear"
-        n_timestep: 1000 # !! Check with the SR pretrained model
+        n_timestep: 100 # !! Check with the SR pretrained model
         linear_start: 0.000001
         linear_end: 0.01
       val:
         schedule: "linear"
-        n_timestep: 1000 # !! Check with the SR pretrained model
+        n_timestep: 100 # !! Check with the SR pretrained model
         linear_start: 0.000001
         linear_end: 0.01
     diffusion:
@@ -62,7 +62,7 @@ sr:
       channels: 3
       conditional: true
   train:
-    n_iter: 1640000 # 4000000 # !! Check the pretrained model of SR
+    n_iter: 2000000 # 4000000 # !! Check the pretrained model of SR
     val_freq: 10000
     save_checkpoint_freq: 2000
     print_freq: 200
@@ -87,7 +87,7 @@ mica:
     eval_data: [ 'LYHM' ]
     dataset_path: 'contents/'
     num_workers: 4
-    batch_size: 4
+    batch_size: 2
     K: 2
   train:
     lr: 1e-5
@@ -110,6 +110,6 @@ mica:
 wandb:
   project: "sr_vggf2"
 
-# python main_temp.py -p train -c config/sr_sr3_VGGF2_8_128_model3.yml
+# python main_temp.py -p train -c config/sr_sr3_VGGF2_32_128_model3.yml
 # python main_temp.py -p val -c config/sr_sr3_VGGF2_8_128.yml
 # python -m debugpy --listen 0.0.0.0:5678 --wait-for-client main_temp.py -p train -c config/sr_sr3_VGGF2_8_128.yml
