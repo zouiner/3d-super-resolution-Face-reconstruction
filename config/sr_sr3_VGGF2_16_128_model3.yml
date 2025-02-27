@@ -111,5 +111,5 @@ wandb:
   project: "sr_vggf2"
 
 # python main_temp.py -p train -c config/sr_sr3_VGGF2_16_128_model3.yml -m model3
-# python main_temp.py -p val -c config/sr_sr3_VGGF2_8_128.yml
+# python main_temp.py -p val -c config/sr_sr3_VGGF2_16_128_model3.yml
 # python -m debugpy --listen 0.0.0.0:5678 --wait-for-client main_temp.py -p train -c config/sr_sr3_VGGF2_8_128.yml

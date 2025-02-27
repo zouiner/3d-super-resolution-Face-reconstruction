@@ -399,10 +399,10 @@ class ThreeDSuperResolutionModel(BaseModel):
         
         if self.cfg.sample == 1:
             name = os.path.basename(val_data['path_sr'][0])[:-4]
-            savepath = os.path.join(self.cfg.output_dir, 'val_images', '{}_{}'.format(epoch, global_step))
+            savepath = os.path.join(self.cfg.output_dir, 'test_images', '{}_{}'.format(epoch, global_step))
         else:
             name = os.path.basename(val_data['path_sr'][0])[:-4] + '_' + str(k).zfill(len(str(self.cfg.sample)))
-            savepath = os.path.join(self.cfg.output_dir, 'val_images', '{}_{}_s{}'.format(epoch, global_step,self.cfg.sample))
+            savepath = os.path.join(self.cfg.output_dir, 'test_images', '{}_{}_s{}'.format(epoch, global_step,self.cfg.sample))
         
         from pathlib import Path
         import trimesh
@@ -438,7 +438,7 @@ class ThreeDSuperResolutionModel(BaseModel):
 
         return avg_psnr, avg_ssim
     
-    def forward(self, x, epoch, global_step):
+    def forward(self, x, epoch, global_step, phase = 'train'):
         visualizeTraining = global_step % self.cfg.train.vis_steps == 0
         
         sr_train_data = self.preprocess_sr_data(x)
@@ -493,7 +493,7 @@ class ThreeDSuperResolutionModel(BaseModel):
                     
                     
                 if visualizeTraining:
-                    savepath = os.path.join(self.cfg.output_dir, 'train_images/{}_{}'.format(epoch, global_step))
+                    savepath = os.path.join(self.cfg.output_dir, '{}_images/{}_{}'.format(phase, epoch, global_step))
                     os.makedirs(savepath, exist_ok=True)
                     Metrics.save_img(sr_img, '{}/{}_{}_sr.png'.format(savepath, i, j))
                     hr_img = Metrics.tensor2img(visuals['HR'])

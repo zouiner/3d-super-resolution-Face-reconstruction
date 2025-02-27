@@ -1,7 +1,7 @@
 import os, sys
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, random_split
 import numpy as np
 from time import time
 from skimage.io import imread
@@ -291,7 +291,7 @@ class Trainer(object):
         self.model.set_new_noise_schedule(
             self.cfg['sr']['model']['beta_schedule'][self.cfg['phase']], schedule_phase=self.cfg['phase'])
         
-        best_model_loss = 0
+        self.best_model_loss = None
         
         if self.cfg['phase'] == 'train':
             iters_every_epoch = int(len(self.train_dataset) / self.batch_size_mica)+1
@@ -338,7 +338,7 @@ class Trainer(object):
                     
                     
                     if self.global_step % self.cfg.train.log_steps == 0:
-                        loss_info = f"\n" \
+                        loss_info = f"Training: \n" \
                                     f"  Epoch: {self.current_epoch}\n" \
                                     f"  Step: {self.global_step}\n" \
                                     f"  Iter: {self.global_step}/{iters_every_epoch}\n" \
@@ -407,34 +407,6 @@ class Trainer(object):
                         if self.wandb_logger:
                             self.wandb_logger.log_metrics(logs)
                     
-                    combined_loss = l_sr +  l_mica
-                    if best_model_loss == 0:
-                        best_model_loss = combined_loss
-                        logger.info('New best model saved.')
-                        self.save_checkpoint(os.path.join(self.cfg.output_dir, 'best_model' + '.tar'))
-                        # if self.wandb_logger:
-                        #     self.wandb_logger.log_best_model(self.current_epoch, self.global_step, best_model_loss)
-                        
-                        output_file_path = os.path.join(self.cfg.output_dir, 'best_model.txt')
-                        message = '<epoch:{:3d}, iter:{:8,d}, loss: {:4f}> '.format(
-                            self.current_epoch, self.global_step, best_model_loss
-                        )
-                        # Write the message to the file using the with statement
-                        with open(output_file_path, 'w') as file:
-                            file.write(message)
-                    elif combined_loss < best_model_loss:
-                        best_model_loss = combined_loss
-                        logger.info('New best model saved.')
-                        self.save_checkpoint(os.path.join(self.cfg.output_dir, 'best_model' + '.tar'))
-                        # if self.wandb_logger:
-                        #     self.wandb_logger.log_best_model(self.current_epoch, self.global_step, best_model_loss)
-                        output_file_path = os.path.join(self.cfg.output_dir, 'best_model.txt')
-                        message = '<epoch:{:3d}, iter:{:8,d}, loss: {:4f}> '.format(
-                            self.current_epoch, self.global_step, best_model_loss
-                        )
-                        # Write the message to the file using the with statement
-                        with open(output_file_path, 'w') as file:
-                            file.write(message)
 
                     if self.global_step % self.cfg.mica.train.lr_update_step == 0:
                         self.scheduler.step() #!! ???
@@ -490,14 +462,132 @@ class Trainer(object):
         
     
     def evaluate_MICA(self):
-        # NOW Benchmark
-        pass
+        with torch.no_grad():
+            for _, val_data in tqdm(enumerate(self.val_iter), total=len(self.val_iter), desc="Processing training data"):
+                
+                l_sr, l_mica, losses, opdict = self.model( val_data, self.current_epoch, self.global_step, phase='val')
+
+                l_mica = l_mica
+                l_sr = l_sr
+                
+                losses['L1'] = l_sr
+                losses['pred_verts_shape_canonical_diff'] = l_mica
+
+                combined_loss = l_sr + l_mica
+
+                if not self.best_model_loss:
+                    self.best_model_loss = combined_loss
+                    logger.info('New best model saved.')
+                    self.save_checkpoint(os.path.join(self.cfg.output_dir, 'best_model' + '.tar'))
+                    # if self.wandb_logger:
+                    #     self.wandb_logger.log_best_model(self.current_epoch, self.global_step, best_model_loss)
+                    
+                    output_file_path = os.path.join(self.cfg.output_dir, 'best_model.txt')
+                    message = '<epoch:{:3d}, iter:{:8,d}, loss: {:4f}> '.format(
+                        self.current_epoch, self.global_step, self.best_model_loss
+                    )
+                    # Write the message to the file using the with statement
+                    with open(output_file_path, 'w') as file:
+                        file.write(message)
+                elif combined_loss < self.best_model_loss:
+                    self.best_model_loss = combined_loss
+                    logger.info('New best model saved.')
+                    self.save_checkpoint(os.path.join(self.cfg.output_dir, 'best_model' + '.tar'))
+                    # if self.wandb_logger:
+                    #     self.wandb_logger.log_best_model(self.current_epoch, self.global_step, best_model_loss)
+                    output_file_path = os.path.join(self.cfg.output_dir, 'best_model.txt')
+                    message = '<epoch:{:3d}, iter:{:8,d}, loss: {:4f}> '.format(
+                        self.current_epoch, self.global_step, self.best_model_loss
+                    )
+                    # Write the message to the file using the with statement
+                    with open(output_file_path, 'w') as file:
+                        file.write(message)
+                    
+                
+                
+                if self.global_step % self.cfg.train.log_steps == 0:
+                    loss_info = f"Validataion: \n" \
+                                f"  Epoch: {self.current_epoch}\n" \
+                                f"  Step: {self.global_step}\n" \
+                                f"  Iter: {self.global_step}/{iters_every_epoch}\n" \
+                                f"  LR_sr: {self.opt_sr.param_groups[0]['lr']}\n" \
+                                f"  LR_mica: {self.opt_mica.param_groups[0]['lr']}\n" \
+                                f"  Time: {datetime.now().strftime('%Y-%m-%d-%H:%M:%S')}\n"
+                    text = '[MICA] '
+                    for k, v in losses.items():
+                        if k != 'all_loss':
+                            loss_info = loss_info + f'  {text + k}: {v:.4f}\n'
+                        else:
+                            text = '[SR] '
+                        if self.cfg.mica.train.write_summary:
+                            self.tb_logger.add_scalar('train_loss/' + k, v, global_step=self.global_step)
+                    logger.info(loss_info)
+                
+                if self.global_step % self.cfg.train.vis_steps == 0:
+                    visdict = {
+                        'input_images': opdict['images'],
+                    }
+                    # add images to tensorboard
+                    for k, v in visdict.items():
+                        self.tb_logger.add_images(k, np.clip(v.detach().cpu(), 0.0, 1.0), self.global_step)
+
+                    pred_canonical_shape_vertices = torch.empty(0, 3, 512, 512).cuda()
+                    flame_verts_shape = torch.empty(0, 3, 512, 512).cuda()
+                    deca_images = torch.empty(0, 3, 512, 512).cuda()
+                    input_images = torch.empty(0, 3, 224, 224).cuda()
+                    L = opdict['pred_canonical_shape_vertices'].shape[0]
+                    S = 4 if L > 4 else L                    
+                    for n in np.random.choice(range(L), size=S, replace=False):
+                        
+                        rendering = self.model.render.render_mesh(opdict['pred_canonical_shape_vertices'][n:n + 1, ...])
+                        pred_canonical_shape_vertices = torch.cat([pred_canonical_shape_vertices, rendering])
+                        rendering = self.model.render.render_mesh(opdict['flame_verts_shape'][n:n + 1, ...])
+                        flame_verts_shape = torch.cat([flame_verts_shape, rendering])
+                        input_images = torch.cat([input_images, opdict['images'].cuda()[n:n + 1, ...]])
+                        if 'deca' in opdict:
+                            deca = self.model.render.render_mesh(opdict['deca'][n:n + 1, ...])
+                            deca_images = torch.cat([deca_images, deca])
+                        
+
+
+                    visdict = {}
+
+                    if 'deca' in opdict:
+                        visdict['deca'] = deca_images
+
+                    visdict["pred_canonical_shape_vertices"] = pred_canonical_shape_vertices
+                    visdict["flame_verts_shape"] = flame_verts_shape
+                    visdict["images"] = input_images
+                    savepath = os.path.join(self.cfg.output_dir, 'val_images/{}_{}'.format(self.current_epoch, self.global_step))
+                    savepath = os.path.join(savepath, 'train_3d.jpg')
+                    util.visualize_grid(visdict, savepath, size=512, return_gird = False)
+                
+                # log
+                if self.global_step % self.cfg.train.print_freq == 0:
+                    logs = self.model.get_current_log()
+                    message = '<epoch:{:3d}, iter:{:8,d}> '.format(
+                        self.current_epoch, self.global_step)
+                    for k, v in logs.items():
+                        message += '{:s}: {:.4e} '.format(k, v)
+                        self.tb_logger.add_scalar(k, v, self.global_step)
+                    logger.info(message)
+
+                    if self.wandb_logger:
+                        self.wandb_logger.log_metrics(logs)
+
     
     def prepare_data(self):
         generator = torch.Generator()
         generator.manual_seed(int(self.cfg.gpu_ids[0]))
         if self.cfg.phase != 'val':
             self.train_dataset, total_images = datasets.build_train(self.cfg, self.device)
+
+            # Split into train and validation sets
+            train_size = int(0.8 * len(full_dataset))  # 80% training
+            val_size = len(full_dataset) - train_size  # 20% validation
+            self.train_dataset, self.val_dataset = random_split(full_dataset, [train_size, val_size], generator=generator)
+
+
             self.train_dataloader = DataLoader(
                 self.train_dataset, batch_size =self.batch_size_mica,
                 num_workers=self.cfg.mica.datasets.num_workers,
@@ -507,20 +597,44 @@ class Trainer(object):
                 worker_init_fn=seed_worker,
                 generator=generator)
 
+            
+             # Create train DataLoader
+            self.train_dataloader = DataLoader(
+                train_dataset, batch_size=self.batch_size_mica,
+                num_workers=self.cfg.mica.datasets.num_workers,
+                shuffle=True,
+                pin_memory=True,
+                drop_last=False,
+                worker_init_fn=seed_worker,
+                generator=generator  # Use existing generator
+            )
+
+            # Create validation DataLoader
+            self.val_dataloader = DataLoader(
+                val_dataset, batch_size=self.batch_size_mica,
+                num_workers=1,
+                shuffle=False,  # No shuffle for validation
+                pin_memory=True,
+                drop_last=False
+            )
+
+
             self.train_iter = iter(self.train_dataloader)
+            self.val_iter = iter(self.val_dataloader)
         
         # sr - val
-        for phase, dataset_opt in self.cfg['sr']['datasets'].items(): # make a real val for sr in one system !!take a look!!
-            # if phase == 'train' and self.cfg.phase != 'val':
-            #     train_set = datasets.create_dataset(dataset_opt, phase)
-            #     self.train_dataloader = datasets.create_dataloader(
-            #         train_set, dataset_opt, phase)
-            #     self.train_iter = iter(self.train_dataloader)
-            if phase == 'val':
-                val_set = datasets.create_dataset(dataset_opt, phase)
-                self.val_dataloader = datasets.create_dataloader(
-                    val_set, dataset_opt, phase)
-                self.val_iter = iter(self.val_dataloader)
+        else:
+            for phase, dataset_opt in self.cfg['sr']['datasets'].items(): # make a real val for sr in one system !!take a look!!
+                # if phase == 'train' and self.cfg.phase != 'val':
+                #     train_set = datasets.create_dataset(dataset_opt, phase)
+                #     self.train_dataloader = datasets.create_dataloader(
+                #         train_set, dataset_opt, phase)
+                #     self.train_iter = iter(self.train_dataloader)
+                if phase == 'val':
+                    val_set = datasets.create_dataset(dataset_opt, phase)
+                    self.val_dataloader = datasets.create_dataloader(
+                        val_set, dataset_opt, phase)
+                    self.val_iter = iter(self.val_dataloader)
         
         logger.info('Initial Dataset Finished')
     
